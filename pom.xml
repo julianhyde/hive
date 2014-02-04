@@ -42,6 +42,7 @@
     <module>serde</module>
     <module>service</module>
     <module>shims</module>
+    <module>sqlline</module>
     <module>testutils</module>
     <module>packaging</module>
   </modules>
@@ -112,7 +113,8 @@
     <jetty.version>6.1.26</jetty.version>
     <jetty.webhcat.version>7.6.0.v20120127</jetty.webhcat.version>
     <jersey.version>1.14</jersey.version>
-    <jline.version>0.9.94</jline.version>
+    <jline.version>2.10</jline.version>
+    <jline.beeline.version>0.9.94</jline.beeline.version>
     <jms.version>1.1</jms.version>
     <json.version>20090211</json.version>
     <junit.version>4.10</junit.version>
