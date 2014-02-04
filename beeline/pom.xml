@@ -74,7 +74,7 @@
     <dependency>
       <groupId>jline</groupId>
       <artifactId>jline</artifactId>
-      <version>${jline.version}</version>
+      <version>${jline.beeline.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.thrift</groupId>
