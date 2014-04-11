@@ -9,15 +9,14 @@
 //
 // http://opensource.org/licenses/BSD-3-Clause
 */
-package sqlline;
+package org.apache.hive.sqlline;
 
 import junit.framework.TestCase;
 
 /**
  * Test cases for SqlLine.
  */
-public class SqlLineTest extends TestCase
-{
+public class SqlLineTest extends TestCase {
     /**
      * Public constructor.
      */
@@ -30,17 +29,15 @@ public class SqlLineTest extends TestCase
      *
      * @param testName Test name
      */
-    public SqlLineTest(String testName)
-    {
-        super(testName);
+    public SqlLineTest(String testName) {
+      super(testName);
     }
 
     /**
-     * Unit test for {@link sqlline.SqlLine#splitCompound(String)}.
+     * Unit test for {@link org.apache.hive.sqlline.SqlLine#splitCompound(String)}.
      */
-    public void testSplitCompound()
-    {
-        final SqlLine line = new SqlLine();
+    public void testSplitCompound() {
+      final SqlLine line = new SqlLine();
         String[][] strings;
 
         // simple line
@@ -98,9 +95,8 @@ public class SqlLineTest extends TestCase
         assertEquals(new String[][] {{"ABC"}, {";DEF"}}, strings);
     }
 
-    void assertEquals(String[][] expectedses, String[][] actualses)
-    {
-        assertEquals(expectedses.length, actualses.length);
+    void assertEquals(String[][] expectedses, String[][] actualses) {
+      assertEquals(expectedses.length, actualses.length);
         for (int i = 0; i < expectedses.length; ++i) {
             String[] expecteds = expectedses[i];
             String[] actuals = actualses[i];

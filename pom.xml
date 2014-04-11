@@ -120,8 +120,10 @@
     <jetty.webhcat.version>7.6.0.v20120127</jetty.webhcat.version>
     <jetty.hive-service.version>7.6.0.v20120127</jetty.hive-service.version>
     <jersey.version>1.14</jersey.version>
-    <jline.version>2.10</jline.version>
-    <jline.beeline.version>0.9.94</jline.beeline.version>
+    <!-- version of jline used by sqlline -->
+    <jline.sqlline.version>2.10</jline.sqlline.version>
+    <!-- version of jline used by other code -->
+    <jline.version>0.9.94</jline.version>
     <jms.version>1.1</jms.version>
     <json.version>20090211</json.version>
     <junit.version>4.10</junit.version>

@@ -11,6 +11,8 @@
 */
 package sqlline;
 
+import org.apache.hive.sqlline.DispatchCallback;
+
 /**
  * A signal handler interface for SqlLine. The interface is decoupled from the
  * implementation since signal handlers are not portable across JVM's, so we use

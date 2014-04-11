@@ -9,7 +9,7 @@
 //
 // http://opensource.org/licenses/BSD-3-Clause
 */
-package sqlline;
+package org.apache.hive.sqlline;
 
 import java.sql.SQLException;
 import java.sql.Statement;

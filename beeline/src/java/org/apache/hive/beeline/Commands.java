@@ -130,12 +130,12 @@ public class Commands {
   }
 
 
-  String arg1(String line, String paramname) {
-    return arg1(line, paramname, null);
+  String arg1(String line, String paramName) {
+    return arg1(line, paramName, null);
   }
 
 
-  String arg1(String line, String paramname, String def) {
+  String arg1(String line, String paramName, String def) {
     String[] ret = beeLine.split(line);
 
     if (ret == null || ret.length != 2) {
@@ -143,8 +143,7 @@ public class Commands {
         return def;
       }
       throw new IllegalArgumentException(beeLine.loc("arg-usage",
-          new Object[] {ret.length == 0 ? "" : ret[0],
-              paramname}));
+          new Object[] {ret.length == 0 ? "" : ret[0], paramName}));
     }
     return ret[1];
   }

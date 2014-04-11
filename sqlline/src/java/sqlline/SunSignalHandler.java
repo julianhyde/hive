@@ -13,6 +13,7 @@ package sqlline;
 
 import java.sql.*;
 
+import org.apache.hive.sqlline.DispatchCallback;
 import sun.misc.*;
 
 /**
