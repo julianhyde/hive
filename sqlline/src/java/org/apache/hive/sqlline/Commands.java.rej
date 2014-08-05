@@ -1,0 +1,62 @@
+***************
+*** 46,51 ****
+  import java.util.Set;
+  import java.util.TreeSet;
+  
+  
+  public class Commands {
+    private final SqlLine sqlLine;
+--- 46,53 ----
+  import java.util.Set;
+  import java.util.TreeSet;
+  
++ import org.apache.hadoop.hive.common.cli.ShellCmdExecutor;
++ 
+  
+  public class Commands {
+    private final SqlLine sqlLine;
+***************
+*** 659,664 ****
+      return execute(line, false);
+    }
+  
+    public boolean call(String line) {
+      return execute(line, true);
+    }
+--- 661,696 ----
+      return execute(line, false);
+    }
+  
++   public boolean sh(String line) {
++     if (line == null || line.length() == 0) {
++       return false;
++     }
++ 
++     if (!line.startsWith("sh")) {
++       return false;
++     }
++ 
++     line = line.substring("sh".length()).trim();
++ 
++     // Support variable substitution. HIVE-6791.
++     // line = new VariableSubstitution().substitute(new HiveConf(SqlLine.class), line.trim());
++ 
++     try {
++       ShellCmdExecutor executor = new ShellCmdExecutor(line, sqlLine.getOutputStream(),
++           sqlLine.getErrorStream());
++       int ret = executor.execute();
++       if (ret != 0) {
++         sqlLine.output("Command failed with exit code = " + ret);
++         return false;
++       }
++       return true;
++     } catch (Exception e) {
++       sqlLine.error("Exception raised from Shell command " + e);
++       sqlLine.error(e);
++       return false;
++     }
++   }
++ 
+    public boolean call(String line) {
+      return execute(line, true);
+    }

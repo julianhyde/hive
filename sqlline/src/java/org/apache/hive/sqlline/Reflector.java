@@ -1,13 +1,30 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.hive.sqlline;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
+/** Reflector. */
 class Reflector {
   private final SqlLine sqlLine;
 
@@ -16,8 +33,7 @@ class Reflector {
   }
 
   public Object invoke(Object on, String method, Object[] args)
-      throws InvocationTargetException,
-      IllegalAccessException,
+      throws InvocationTargetException, IllegalAccessException,
       ClassNotFoundException {
     return invoke(on, method, Arrays.asList(args));
   }
@@ -25,31 +41,29 @@ class Reflector {
   public Object invoke(Object on, String method, List args)
       throws InvocationTargetException, IllegalAccessException,
       ClassNotFoundException {
-    return invoke(on, (on == null) ? null : on.getClass(), method, args);
+    return invoke(on, on == null ? null : on.getClass(), method, args);
   }
 
   public Object invoke(Object on, Class defClass,
       String method, List args)
       throws InvocationTargetException, IllegalAccessException,
       ClassNotFoundException {
-    Class c = (defClass != null) ? defClass : on.getClass();
+    Class c = defClass != null ? defClass : on.getClass();
     List<Method> candidateMethods = new LinkedList<Method>();
 
-    Method[] m = c.getMethods();
-    for (int i = 0; i < m.length; i++) {
-      if (m[i].getName().equalsIgnoreCase(method)) {
-        candidateMethods.add(m[i]);
+    for (Method candidateMethod : c.getMethods()) {
+      if (candidateMethod.getName().equalsIgnoreCase(method)) {
+        candidateMethods.add(candidateMethod);
       }
     }
 
     if (candidateMethods.size() == 0) {
       throw new IllegalArgumentException(sqlLine.loc("no-method",
-          new Object[]{method, c.getName()}));
+          new Object[] {method, c.getName()}));
     }
 
-    for (Iterator<Method> i = candidateMethods.iterator(); i.hasNext(); ) {
-      Method meth = i.next();
-      Class[] ptypes = meth.getParameterTypes();
+    for (Method candidateMethod : candidateMethods) {
+      Class[] ptypes = candidateMethod.getParameterTypes();
       if (!(ptypes.length == args.size())) {
         continue;
       }
@@ -59,11 +73,10 @@ class Reflector {
         continue;
       }
 
-      if (!Modifier.isPublic(meth.getModifiers())) {
+      if (!Modifier.isPublic(candidateMethod.getModifiers())) {
         continue;
       }
-
-      return meth.invoke(on, converted);
+      return candidateMethod.invoke(on, converted);
     }
 
     return null;
@@ -80,35 +93,38 @@ class Reflector {
 
   public static Object convert(Object ob, Class toType)
       throws ClassNotFoundException {
-    if (ob == null || ob.toString().equals("null")) {
+    if (ob == null) {
+      return null;
+    }
+    final String s = ob.toString();
+    if (s.equals("null")) {
       return null;
     }
     if (toType == String.class) {
-      return new String(ob.toString());
-    } else if ((toType == Byte.class) || (toType == byte.class)) {
-      return new Byte(ob.toString());
-    } else if ((toType == Character.class) || (toType == char.class)) {
-      return new Character(ob.toString().charAt(0));
-    } else if ((toType == Short.class) || (toType == short.class)) {
-      return new Short(ob.toString());
-    } else if ((toType == Integer.class) || (toType == int.class)) {
-      return new Integer(ob.toString());
-    } else if ((toType == Long.class) || (toType == long.class)) {
-      return new Long(ob.toString());
-    } else if ((toType == Double.class) || (toType == double.class)) {
-      return new Double(ob.toString());
-    } else if ((toType == Float.class) || (toType == float.class)) {
-      return new Float(ob.toString());
-    } else if ((toType == Boolean.class) || (toType == boolean.class)) {
-      return new Boolean(ob.toString().equals("true")
-              || ob.toString().equals(true + "")
-              || ob.toString().equals("1")
-              || ob.toString().equals("on")
-              || ob.toString().equals("yes"));
+      return s;
+    } else if (toType == Byte.class || toType == byte.class) {
+      return new Byte(s);
+    } else if (toType == Character.class || toType == char.class) {
+      return s.charAt(0);
+    } else if (toType == Short.class || toType == short.class) {
+      return new Short(s);
+    } else if (toType == Integer.class || toType == int.class) {
+      return new Integer(s);
+    } else if (toType == Long.class || toType == long.class) {
+      return new Long(s);
+    } else if (toType == Double.class || toType == double.class) {
+      return new Double(s);
+    } else if (toType == Float.class || toType == float.class) {
+      return new Float(s);
+    } else if (toType == Boolean.class || toType == boolean.class) {
+      return s.equals("true")
+          || s.equals(true + "")
+          || s.equals("1")
+          || s.equals("on")
+          || s.equals("yes");
     } else if (toType == Class.class) {
-      return Class.forName(ob.toString());
+      return Class.forName(s);
     }
-
     return null;
   }
 }

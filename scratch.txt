@@ -1,0 +1,6 @@
+1. convert StringBuffer to StringBuilder
+2. genericize
+3. Fix bug in DatabaseConnection.connect, if theDriver is null
+4. remove 'created by jhyde'
+5. ColorAttr becomes enum
+

@@ -1,19 +1,50 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.hive.sqlline;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import jline.TerminalFactory;
 import jline.console.completer.Completer;
 import jline.console.completer.StringsCompleter;
 
-import java.io.*;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.*;
-
-class SqlLineOpts implements Completer {
+/** Configuration options for SqlLine. */
+public class SqlLineOpts implements Completer {
   public static final String PROPERTY_PREFIX = "sqlline.";
   public static final String PROPERTY_NAME_EXIT =
       PROPERTY_PREFIX + "system.exit";
-  private SqlLine sqlLine;
+  public static final String DEFAULT_ISOLATION_LEVEL =
+      "TRANSACTION_REPEATABLE_READ";
+
+  private final SqlLine sqlLine;
   private boolean autosave = false;
   private boolean silent = false;
   private boolean color = false;
@@ -33,64 +64,61 @@ class SqlLineOpts implements Completer {
   private int maxColumnWidth = 15;
   int rowLimit = 0;
   int timeout = -1;
-  private String isolation = "TRANSACTION_REPEATABLE_READ";
+  private String isolation = DEFAULT_ISOLATION_LEVEL;
   private String outputFormat = "table";
   private boolean trimScripts = true;
-  private File rcFile = new File(saveDir(), "sqlline.properties");
-  private String historyFile =
-      new File(saveDir(), "history").getAbsolutePath();
+
+  private final File rcFile;
+  private String historyFile;
 
   private String runFile;
 
-  public SqlLineOpts(SqlLine sqlLine, Properties props) {
+  public SqlLineOpts(SqlLine sqlLine, Properties props, String propFileName,
+      String rcfilePropName) {
     this.sqlLine = sqlLine;
     loadProperties(props);
+    final File parent = saveDir(rcfilePropName);
+    rcFile = new File(parent, propFileName);
+    historyFile = new File(parent, "history").getAbsolutePath();
   }
 
-  public Completer[] optionCompletors() {
+  public Completer[] optionCompleters() {
     return new Completer[] {this};
-  }
-
-  public String[] possibleSettingValues() {
-    List<String> vals = new LinkedList<String>();
-    vals.addAll(Arrays.asList(new String[]{"yes", "no"}));
-    return vals.toArray(new String[vals.size()]);
   }
 
   /**
    * The save directory if HOME/.sqlline/ on UNIX, and HOME/sqlline/ on
    * Windows.
    */
-  public File saveDir() {
-    String dir = System.getProperty("sqlline.rcfile");
-    if ((dir != null) && (dir.length() > 0)) {
+  public File saveDir(String rcPropName) {
+    String dir = System.getProperty(rcPropName);
+    if (dir != null && dir.length() > 0) {
       return new File(dir);
     }
 
     String baseDir = System.getProperty(SqlLine.SQLLINE_BASE_DIR);
-    if ((baseDir != null) && (baseDir.length() > 0)) {
-      File saveDir = new File(baseDir).getAbsoluteFile();
-      saveDir.mkdirs();
-      return saveDir;
+    File f;
+    if (baseDir != null && baseDir.length() > 0) {
+      f = new File(baseDir);
+    } else {
+      final boolean windows =
+          System.getProperty("os.name").toLowerCase().contains("windows");
+      final String home = System.getProperty("user.home");
+      f = new File(home, (windows ? "" : ".") + "sqlline");
     }
-
-    File f =
-        new File(
-            System.getProperty("user.home"),
-            ((System.getProperty("os.name").toLowerCase()
-                .indexOf("windows") != -1) ? "" : ".") + "sqlline")
-            .getAbsoluteFile();
+    f = f.getAbsoluteFile();
     try {
       f.mkdirs();
     } catch (Exception e) {
+      // ignore
     }
-
     return f;
   }
 
   public int complete(String buf, int pos, List<CharSequence> candidates) {
     try {
-      return new StringsCompleter(propertyNames()).complete(buf, pos, candidates);
+      return new StringsCompleter(propertyNames())
+          .complete(buf, pos, candidates);
     } catch (Throwable t) {
       return -1;
     }
@@ -105,32 +133,28 @@ class SqlLineOpts implements Completer {
   public void save(OutputStream out) throws IOException {
     try {
       Properties props = toProperties();
-
       // don't save maxwidth: it is automatically set based on
       // the terminal configuration
       props.remove(PROPERTY_PREFIX + "maxwidth");
-
       props.store(out, sqlLine.getApplicationTitle());
     } catch (Exception e) {
       sqlLine.handleException(e);
     }
   }
 
-  String[] propertyNames()
+  SortedSet<String> propertyNames()
       throws IllegalAccessException, InvocationTargetException {
-    TreeSet names = new TreeSet();
+    TreeSet<String> names = new TreeSet<String>();
 
     // get all the values from getXXX methods
     Method[] m = getClass().getDeclaredMethods();
-    for (int i = 0; (m != null) && (i < m.length); i++) {
+    for (int i = 0; m != null && i < m.length; i++) {
       if (!(m[i].getName().startsWith("get"))) {
         continue;
       }
-
       if (m[i].getParameterTypes().length != 0) {
         continue;
       }
-
       String propName = m[i].getName().substring(3).toLowerCase();
       if (propName.equals("run")) {
         // Not a real property
@@ -138,53 +162,56 @@ class SqlLineOpts implements Completer {
       }
       names.add(propName);
     }
-
-    return (String[]) names.toArray(new String[names.size()]);
+    return names;
   }
 
   public Properties toProperties()
-      throws IllegalAccessException,
-      InvocationTargetException,
+      throws IllegalAccessException, InvocationTargetException,
       ClassNotFoundException {
     Properties props = new Properties();
-
-    String[] names = propertyNames();
-    for (int i = 0; (names != null) && (i < names.length); i++) {
-      props.setProperty(PROPERTY_PREFIX + names[i],
-          sqlLine.getReflector().invoke(this, "get" + names[i], new Object[0])
-              .toString());
+    for (Map.Entry<String, String> entry : toMap().entrySet()) {
+      props.setProperty(entry.getKey(), entry.getValue());
     }
-
-    sqlLine.debug("properties: " + props.toString());
     return props;
   }
 
-  public void load()
-      throws IOException {
-    if (rcFile.exists()) {
-      InputStream in = new FileInputStream(rcFile);
-      load(in);
-      in.close();
+  public Map<String, String> toMap()
+      throws IllegalAccessException, InvocationTargetException,
+      ClassNotFoundException {
+    Map<String, String> map = new LinkedHashMap<String, String>();
+    for (String name : propertyNames()) {
+      map.put(PROPERTY_PREFIX + name,
+          sqlLine.getReflector().invoke(this, "get" + name, new Object[0])
+              .toString());
     }
+    sqlLine.debug("properties: " + map.toString());
+    return map;
   }
 
-  public void load(InputStream fin)
-      throws IOException {
+  public void load() throws IOException {
+    if (!rcFile.exists()) {
+      return;
+    }
+    InputStream in = new FileInputStream(rcFile);
+    load(in);
+    in.close();
+  }
+
+  public void load(InputStream fin) throws IOException {
     Properties p = new Properties();
     p.load(fin);
     loadProperties(p);
   }
 
   public void loadProperties(Properties props) {
-    for (Iterator i = props.keySet().iterator(); i.hasNext(); ) {
-      String key = i.next().toString();
+    for (Object element : props.keySet()) {
+      String key = element.toString();
       if (key.equals(PROPERTY_NAME_EXIT)) {
         // fix for sf.net bug 879422
         continue;
       }
       if (key.startsWith(PROPERTY_PREFIX)) {
-        set(
-            key.substring(PROPERTY_PREFIX.length()),
+        set(key.substring(PROPERTY_PREFIX.length()),
             props.getProperty(key));
       }
     }
@@ -196,17 +223,11 @@ class SqlLineOpts implements Completer {
 
   public boolean set(String key, String value, boolean quiet) {
     try {
-      sqlLine.getReflector().invoke(this, "set" + key, new Object[]{value});
+      sqlLine.getReflector().invoke(this, "set" + key, new Object[] {value});
       return true;
     } catch (Exception e) {
       if (!quiet) {
-        // need to use System.err here because when bad command args
-        // are passed this is called before init is done, meaning
-        // that sqlline's error() output chokes because it depends
-        // on properties like text coloring that can get set in
-        // arbitrary order.
-        System.err.println(
-            sqlLine.loc("error-setting", new Object[]{key, e}));
+        sqlLine.error(sqlLine.loc("error-setting", new Object[]{key, e}));
       }
       return false;
     }
@@ -360,7 +381,7 @@ class SqlLineOpts implements Completer {
     this.silent = silent;
   }
 
-  public boolean getSilent() {
+  public boolean isSilent() {
     return this.silent;
   }
 
@@ -406,5 +427,9 @@ class SqlLineOpts implements Completer {
 
   public String getRun() {
     return this.runFile;
+  }
+
+  public boolean isCautious() {
+    return false;
   }
 }

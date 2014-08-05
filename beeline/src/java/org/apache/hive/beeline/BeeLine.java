@@ -15,41 +15,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-/*
- * This source file is based on code taken from SQLLine 1.0.2
- * See SQLLine notice in LICENSE
- */
 package org.apache.hive.beeline;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.EOFException;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileWriter;
+import org.apache.hive.sqlline.SqlLine;
+import org.apache.hive.sqlline.SqlLineOpts;
+
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintStream;
-import java.io.PrintWriter;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.net.JarURLConnection;
-import java.net.URL;
-import java.net.URLConnection;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.Driver;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.SQLWarning;
-import java.sql.Statement;
-import java.text.ChoiceFormat;
-import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Collection;
+<<<<<<< HEAD
 import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
@@ -63,10 +38,12 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.ResourceBundle;
 import java.util.Set;
+=======
+import java.util.Properties;
+>>>>>>> Merge beeline package into sqlline.
 import java.util.SortedSet;
-import java.util.StringTokenizer;
-import java.util.TreeMap;
 import java.util.TreeSet;
+<<<<<<< HEAD
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
@@ -84,175 +61,52 @@ import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
+=======
+>>>>>>> Merge beeline package into sqlline.
 
 /**
- * A console SQL shell with command completion.
- * <p>
- * TODO:
- * <ul>
- * <li>User-friendly connection prompts</li>
- * <li>Page results</li>
- * <li>Handle binary data (blob fields)</li>
- * <li>Implement command aliases</li>
- * <li>Stored procedure execution</li>
- * <li>Binding parameters to prepared statements</li>
- * <li>Scripting language</li>
- * <li>XA transactions</li>
- * </ul>
- *
+ * A console SQL shell for Hive, with command completion.
  */
-public class BeeLine {
-  private static final ResourceBundle resourceBundle =
-      ResourceBundle.getBundle(BeeLine.class.getSimpleName());
-  private final BeeLineSignalHandler signalHandler = null;
-  private static final String separator = System.getProperty("line.separator");
-  private boolean exit = false;
-  private final DatabaseConnections connections = new DatabaseConnections();
-  public static final String COMMAND_PREFIX = "!";
-  private final Completor beeLineCommandCompletor;
-  private Collection<Driver> drivers = null;
-  private final BeeLineOpts opts = new BeeLineOpts(this, System.getProperties());
-  private String lastProgress = null;
-  private final Map<SQLWarning, Date> seenWarnings = new HashMap<SQLWarning, Date>();
-  private final Commands commands = new Commands(this);
-  private OutputFile scriptOutputFile = null;
-  private OutputFile recordOutputFile = null;
-  private PrintStream outputStream = new PrintStream(System.out, true);
-  private PrintStream errorStream = new PrintStream(System.err, true);
-  private ConsoleReader consoleReader;
-  private List<String> batch = null;
-  private final Reflector reflector;
+public class BeeLine extends SqlLine {
+  public static final int DEFAULT_MAX_WIDTH = 80;
+  public static final int DEFAULT_MAX_HEIGHT = 80;
 
+<<<<<<< HEAD
   private static final Options options = new Options();
 
   public static final String BEELINE_DEFAULT_JDBC_DRIVER = "org.apache.hive.jdbc.HiveDriver";
+=======
+  public static final String BEELINE_DEFAULT_JDBC_DRIVER =
+      "org.apache.hive.jdbc.HiveDriver";
+>>>>>>> Merge beeline package into sqlline.
   public static final String BEELINE_DEFAULT_JDBC_URL = "jdbc:hive2://";
 
   private static final String SCRIPT_OUTPUT_PREFIX = ">>>";
   private static final int SCRIPT_OUTPUT_PAD_SIZE = 5;
 
-  private static final int ERRNO_OK = 0;
-  private static final int ERRNO_ARGS = 1;
-  private static final int ERRNO_OTHER = 2;
-
-  private static final String HIVE_VAR_PREFIX = "--hivevar";
-  private static final String HIVE_CONF_PREFIX = "--hiveconf";
-
-  private final Map<Object, Object> formats = map(new Object[] {
-      "vertical", new VerticalOutputFormat(this),
-      "table", new TableOutputFormat(this),
-      "csv", new SeparatedValuesOutputFormat(this, ','),
-      "tsv", new SeparatedValuesOutputFormat(this, '\t'),
-      "xmlattr", new XMLAttributeOutputFormat(this),
-      "xmlelements", new XMLElementOutputFormat(this),
-  });
-
-
-  final CommandHandler[] commandHandlers = new CommandHandler[] {
-      new ReflectiveCommandHandler(this, new String[] {"quit", "done", "exit"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"connect", "open"},
-          new Completor[] {new SimpleCompletor(getConnectionURLExamples())}),
-      new ReflectiveCommandHandler(this, new String[] {"describe"},
-          new Completor[] {new TableNameCompletor(this)}),
-      new ReflectiveCommandHandler(this, new String[] {"indexes"},
-          new Completor[] {new TableNameCompletor(this)}),
-      new ReflectiveCommandHandler(this, new String[] {"primarykeys"},
-          new Completor[] {new TableNameCompletor(this)}),
-      new ReflectiveCommandHandler(this, new String[] {"exportedkeys"},
-          new Completor[] {new TableNameCompletor(this)}),
-      new ReflectiveCommandHandler(this, new String[] {"manual"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"importedkeys"},
-          new Completor[] {new TableNameCompletor(this)}),
-      new ReflectiveCommandHandler(this, new String[] {"procedures"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"tables"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"typeinfo"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"columns"},
-          new Completor[] {new TableNameCompletor(this)}),
-      new ReflectiveCommandHandler(this, new String[] {"reconnect"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"dropall"},
-          new Completor[] {new TableNameCompletor(this)}),
-      new ReflectiveCommandHandler(this, new String[] {"history"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"metadata"},
-          new Completor[] {
-              new SimpleCompletor(getMetadataMethodNames())}),
-      new ReflectiveCommandHandler(this, new String[] {"nativesql"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"dbinfo"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"rehash"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"verbose"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"run"},
-          new Completor[] {new FileNameCompletor()}),
-      new ReflectiveCommandHandler(this, new String[] {"batch"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"list"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"all"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"go", "#"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"script"},
-          new Completor[] {new FileNameCompletor()}),
-      new ReflectiveCommandHandler(this, new String[] {"record"},
-          new Completor[] {new FileNameCompletor()}),
-      new ReflectiveCommandHandler(this, new String[] {"brief"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"close"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"closeall"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"isolation"},
-          new Completor[] {new SimpleCompletor(getIsolationLevels())}),
-      new ReflectiveCommandHandler(this, new String[] {"outputformat"},
-          new Completor[] {new SimpleCompletor(
-              formats.keySet().toArray(new String[0]))}),
-      new ReflectiveCommandHandler(this, new String[] {"autocommit"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"commit"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"properties"},
-          new Completor[] {new FileNameCompletor()}),
-      new ReflectiveCommandHandler(this, new String[] {"rollback"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"help", "?"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"set"},
-          getOpts().optionCompletors()),
-      new ReflectiveCommandHandler(this, new String[] {"save"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"scan"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"sql"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"call"},
-          null),
-      new ReflectiveCommandHandler(this, new String[] {"nullemptystring"},
-          new Completor[] {new BooleanCompletor()}),
-  };
-
-
-  static final SortedSet<String> KNOWN_DRIVERS = new TreeSet<String>(Arrays.asList(
-      new String[] {
+  static final SortedSet<String> HIVE_DRIVERS =
+      new TreeSet<String>(Arrays.asList(
           "org.apache.hive.jdbc.HiveDriver",
-          "org.apache.hadoop.hive.jdbc.HiveDriver",
-      }));
+          "com.mysql.jdbc.DatabaseMetaData"));
 
+  @Override
+  protected SqlLineOpts createOpts() {
+    final SqlLineOpts opts =
+        new SqlLineOpts((SqlLine) this, new Properties(), "beeline.properties",
+            "beeline.rcfile") {
+      public boolean isCautious() {
+        // Bug-compatibility mode.
+        return true;
+      }
+    };
+    opts.setAutoCommit(false);
+    opts.setIncremental(false);
+    opts.setShowWarnings(false);
 
-  static {
-    try {
-      Class.forName("jline.ConsoleReader");
-    } catch (Throwable t) {
-      throw new ExceptionInInitializerError("jline-missing");
+    if (opts.getMaxWidth() <= 0) {
+      opts.setMaxWidth(DEFAULT_MAX_WIDTH);
     }
+<<<<<<< HEAD
   }
 
   static {
@@ -336,37 +190,30 @@ public class BeeLine {
     URLConnection c = base.openConnection();
     if (c instanceof JarURLConnection) {
       return ((JarURLConnection) c).getManifest();
+=======
+    if (opts.getMaxHeight() <= 0) {
+      opts.setMaxHeight(DEFAULT_MAX_HEIGHT);
+>>>>>>> Merge beeline package into sqlline.
     }
-    return null;
+
+    opts.loadProperties(System.getProperties());
+    return opts;
   }
 
-
-  String getManifestAttribute(String name) {
-    try {
-      Manifest m = getManifest();
-      if (m == null) {
-        return "??";
-      }
-
-      Attributes attrs = m.getAttributes("beeline");
-      if (attrs == null) {
-        return "???";
-      }
-
-      String val = attrs.getValue(name);
-      if (val == null || "".equals(val)) {
-        return "????";
-      }
-
-      return val;
-    } catch (Exception e) {
-      e.printStackTrace(errorStream);
-      return "?????";
-    }
+  @Override
+  protected String prefix(int index, int size) {
+    // TODO: Make script output prefixing configurable. Had to disable this
+    // since it results in lots of test diffs.
+    return pad(SCRIPT_OUTPUT_PREFIX, SCRIPT_OUTPUT_PAD_SIZE);
   }
 
+  @Override
+  protected Collection<String> getKnownDrivers() {
+    return HIVE_DRIVERS;
+  }
 
-  String getApplicationTitle() {
+  @Override
+  protected String getApplicationTitle() {
     Package pack = BeeLine.class.getPackage();
 
     return loc("app-introduction", new Object[] {
@@ -382,83 +229,34 @@ public class BeeLine {
     });
   }
 
-  String getApplicationContactInformation() {
-    return getManifestAttribute("Implementation-Vendor");
-  }
-
-  String loc(String res) {
-    return loc(res, new Object[0]);
-  }
-
-  String loc(String res, int param) {
-    try {
-      return MessageFormat.format(
-          new ChoiceFormat(resourceBundle.getString(res)).format(param),
-          new Object[] {new Integer(param)});
-    } catch (Exception e) {
-      return res + ": " + param;
-    }
-  }
-
-  String loc(String res, Object param1) {
-    return loc(res, new Object[] {param1});
-  }
-
-  String loc(String res, Object param1, Object param2) {
-    return loc(res, new Object[] {param1, param2});
-  }
-
-  String loc(String res, Object[] params) {
-    try {
-      return MessageFormat.format(resourceBundle.getString(res), params);
-    } catch (Exception e) {
-      e.printStackTrace(getErrorStream());
-      try {
-        return res + ": " + Arrays.asList(params);
-      } catch (Exception e2) {
-        return res;
-      }
-    }
-  }
-
-  protected String locElapsedTime(long milliseconds) {
-    if (getOpts().getShowElapsedTime()) {
-      return loc("time-ms", new Object[] {new Double(milliseconds / 1000d)});
-    }
-    return "";
-  }
-
-
   /**
    * Starts the program.
    */
   public static void main(String[] args) throws IOException {
-    mainWithInputRedirection(args, null);
+    new BeeLine().start2(Arrays.asList(args), null, true);
   }
 
   /**
-   * Starts the program with redirected input. For redirected output,
-   * setOutputStream() and setErrorStream can be used.
-   * Exits with 0 on success, 1 on invalid arguments, and 2 on any other error
+   * Starts the program with redirected input.
    *
-   * @param args
-   *          same as main()
+   * <p>For redirected output, {@link #setOutputStream} and
+   * {@link #setErrorStream} can be used.
    *
-   * @param inputStream
-   *          redirected input, or null to use standard input
+   * <p>Exits with 0 on success, 1 on invalid arguments, and 2 on any other
+   * error.
+   *
+   * @param args        same as main()
+   * @param inputStream redirected input, or null to use standard input
    */
-  public static void mainWithInputRedirection(String[] args, InputStream inputStream)
+  public static boolean mainWithInputRedirection(
+      String[] args,
+      InputStream inputStream)
       throws IOException {
-    BeeLine beeLine = new BeeLine();
-    int status = beeLine.begin(args, inputStream);
-
-    if (!Boolean.getBoolean(BeeLineOpts.PROPERTY_NAME_EXIT)) {
-      System.exit(status);
-    }
+    return new BeeLine().start2(Arrays.asList(args), inputStream, false);
   }
 
-
   public BeeLine() {
+<<<<<<< HEAD
     beeLineCommandCompletor = new BeeLineCommandCompletor(this);
     reflector = new Reflector(this);
 
@@ -1824,5 +1622,11 @@ public class BeeLine {
 
   protected Reflector getReflector() {
     return reflector;
+=======
+    // disable default driver and URL for easier debugging; TODO: enable
+    super(false,
+        false ? BEELINE_DEFAULT_JDBC_DRIVER : null,
+        false ? BEELINE_DEFAULT_JDBC_URL : null);
+>>>>>>> Merge beeline package into sqlline.
   }
 }
