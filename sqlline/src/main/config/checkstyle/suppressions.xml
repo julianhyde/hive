@@ -1,3 +1,8 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+        "-//Puppy Crawl//DTD Suppressions 1.1//EN"
+        "http://www.puppycrawl.com/dtds/suppressions_1_1.dtd">
+<!--
 /**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -15,21 +20,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-/*
- * This source file is based on code taken from SQLLine 1.0.2
- * See SQLLine notice in LICENSE
- */
-
-package org.apache.hive.beeline;
-
-import java.sql.Statement;
-
-
-/**
- * BeeLineSignalHandler.
- *
- */
-public interface BeeLineSignalHandler {
-  public void setStatement(Statement stmt);
-}
+-->
+<suppressions>
+  <suppress checks="IllegalImport" files="src[/\\]java[/\\]org[/\\]apache[/\\]hive[/\\]sqlline[/\\]SunSignalHandler.java"/>
+  <suppress checks="JavadocPackage" files="src[/\\]test"/>
+  <suppress checks="Header" files=".*.properties"/>
+</suppressions>

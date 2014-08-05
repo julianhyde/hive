@@ -16,44 +16,9 @@
  * limitations under the License.
  */
 
-/*
- * This source file is based on code taken from SQLLine 1.0.2
- * See SQLLine notice in LICENSE
+/**
+ * SqlLine, a shell for issuing SQL to relational databases via JDBC.
  */
-package org.apache.hive.beeline;
+package org.apache.hive.sqlline;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
-
-public class OutputFile {
-  final File file;
-  final PrintWriter out;
-
-  public OutputFile(String filename) throws IOException {
-    file = new File(filename);
-    out = new PrintWriter(new FileWriter(file));
-  }
-
-  @Override
-  public String toString() {
-    return file.getAbsolutePath();
-  }
-
-  public void addLine(String command) {
-    out.println(command);
-  }
-
-  public void println(String command) {
-    out.println(command);
-  }
-
-  public void print(String command) {
-    out.print(command);
-  }
-
-  public void close() throws IOException {
-    out.close();
-  }
-}
+// End package-info.java

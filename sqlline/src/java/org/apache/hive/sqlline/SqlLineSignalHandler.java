@@ -15,22 +15,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
-package org.apache.hive.beeline;
-
-import java.util.List;
-
-import jline.Completor;
-import jline.SimpleCompletor;
+package org.apache.hive.sqlline;
 
 /**
- * JLine completor boolean value (true/false)
+ * A signal handler interface for SqlLine.
+ *
+ * <p>The interface is decoupled from the implementation since signal handlers
+ * are not portable across JVMs. We use dynamic class-loading.
  */
-class BooleanCompletor extends SimpleCompletor {
-
-  public BooleanCompletor(){
-    super(new String[] {"true", "false"});
-  }
-
+public interface SqlLineSignalHandler {
+  /**
+   * Sets the dispatchCallback to be alerted of by signals.
+   *
+   * @param dispatchCallback statement affected
+   */
+  void setCallback(DispatchCallback dispatchCallback);
 }
+
+// End SqlLineSignalHandler.java

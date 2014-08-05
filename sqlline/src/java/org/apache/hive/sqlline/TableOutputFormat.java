@@ -1,3 +1,20 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.hive.sqlline;
 
 /**
@@ -5,6 +22,7 @@ package org.apache.hive.sqlline;
  */
 class TableOutputFormat implements OutputFormat {
   private final SqlLine sqlLine;
+  private final StringBuilder sb = new StringBuilder();
 
   public TableOutputFormat(SqlLine sqlLine) {
     this.sqlLine = sqlLine;
@@ -19,39 +37,39 @@ class TableOutputFormat implements OutputFormat {
     // normalize the columns sizes
     rows.normalizeWidths();
 
-    for (; rows.hasNext(); ) {
-      Rows.Row row = (Rows.Row) rows.next();
+    for (; rows.hasNext();) {
+      Rows.Row row = rows.next();
       ColorBuffer cbuf = getOutputString(rows, row);
       cbuf = cbuf.truncate(width);
 
-      if (index == 0) {
-        StringBuffer h = new StringBuffer();
+      if (index == 0)  {
+        sb.setLength(0);
         for (int j = 0; j < row.sizes.length; j++) {
           for (int k = 0; k < row.sizes[j]; k++) {
-            h.append('-');
+            sb.append('-');
           }
-          h.append("-+-");
+          sb.append("-+-");
         }
 
         headerCols = cbuf;
-        header =
-            sqlLine.getColorBuffer().green(h.toString()).truncate(
-                headerCols.getVisibleLength());
+        header = sqlLine.getColorBuffer()
+            .green(sb.toString())
+            .truncate(headerCols.getVisibleLength());
       }
 
-      if ((index == 0)
+      if (index == 0
           || (sqlLine.getOpts().getHeaderInterval() > 0
-          && (index % sqlLine.getOpts().getHeaderInterval() == 0)
-          && sqlLine.getOpts().getShowHeader())) {
+              && index % sqlLine.getOpts().getHeaderInterval() == 0
+              && sqlLine.getOpts().getShowHeader())) {
         printRow(header, true);
         printRow(headerCols, false);
         printRow(header, true);
       }
 
-      if (index != 0) { // don't output the header twice
+      if (index != 0) {
+        // don't output the header twice
         printRow(cbuf, false);
       }
-
       index++;
     }
 
@@ -88,33 +106,34 @@ class TableOutputFormat implements OutputFormat {
         buf.green(delim);
       }
 
-      ColorBuffer v;
-
+      String v;
       if (row.isMeta) {
-        v = sqlLine.getColorBuffer().center(row.values[i], row.sizes[i]);
+        v = SqlLine.center(row.values[i], row.sizes[i]);
         if (rows.isPrimaryKey(i)) {
-          buf.cyan(v.getMono());
+          buf.cyan(v);
         } else {
-          buf.bold(v.getMono());
+          buf.bold(v);
         }
       } else {
-        v = sqlLine.getColorBuffer().pad(row.values[i], row.sizes[i]);
+        v = SqlLine.pad(row.values[i], row.sizes[i]);
         if (rows.isPrimaryKey(i)) {
-          buf.cyan(v.getMono());
+          buf.cyan(v);
         } else {
-          buf.append(v.getMono());
+          buf.append(v);
         }
       }
     }
 
-    if (row.deleted) { // make deleted rows red
+    if (row.deleted) {
+      // make deleted rows red
       buf = sqlLine.getColorBuffer().red(buf.getMono());
-    } else if (row.updated) { // make updated rows blue
+    } else if (row.updated) {
+      // make updated rows blue
       buf = sqlLine.getColorBuffer().blue(buf.getMono());
-    } else if (row.inserted) { // make new rows green
+    } else if (row.inserted) {
+      // make new rows green
       buf = sqlLine.getColorBuffer().green(buf.getMono());
     }
-
     return buf;
   }
 }

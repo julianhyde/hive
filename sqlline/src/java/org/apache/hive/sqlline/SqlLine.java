@@ -1,34 +1,74 @@
-/*
-// Licensed to Julian Hyde under one or more contributor license
-// agreements. See the NOTICE file distributed with this work for
-// additional information regarding copyright ownership.
-//
-// Julian Hyde licenses this file to you under the Modified BSD License
-// (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at:
-//
-// http://opensource.org/licenses/BSD-3-Clause
-*/
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.hive.sqlline;
 
-import java.io.*;
-import java.lang.reflect.*;
-import java.net.*;
-import java.sql.*;
-import java.text.*;
-import java.util.*;
+import java.io.EOFException;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.net.JarURLConnection;
+import java.net.URL;
+import java.net.URLConnection;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.Driver;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLWarning;
+import java.sql.Statement;
+import java.text.ChoiceFormat;
+import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
-import java.util.jar.*;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.StringTokenizer;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
 
-import jline.*;
+import jline.Terminal;
+import jline.TerminalFactory;
 import jline.console.ConsoleReader;
 import jline.console.UserInterruptException;
 import jline.console.completer.Completer;
 import jline.console.completer.FileNameCompleter;
 import jline.console.completer.StringsCompleter;
 import jline.console.history.FileHistory;
-import sqlline.ClassNameCompleter;
-import sqlline.SqlLineSignalHandler;
 
 /**
  * A console SQL shell with command completion.
@@ -46,17 +86,50 @@ import sqlline.SqlLineSignalHandler;
  * </ul>
  */
 public class SqlLine {
-  private static final ResourceBundle resourceBundle =
+  private static final ResourceBundle RESOURCE_BUNDLE =
       ResourceBundle.getBundle(SqlLine.class.getName());
 
-  private static final String separator = System.getProperty("line.separator");
+  private static final String SEPARATOR = System.getProperty("line.separator");
+  public static final String COMMAND_PREFIX = "!";
+  private static final String[] SPACES = {
+    "",
+    " ",
+    "  ",
+    "   ",
+    "    ",
+    "     ",
+    "      ",
+    "       ",
+    "        ",
+    "         ",
+    "          ",
+    "           ",
+    "            ",
+    "             ",
+    "              ",
+    "               ",
+    "                ",
+    "                 ",
+    "                  ",
+    "                   ",
+    "                    ",
+    "                     ",
+    "                      ",
+    "                       ",
+    "                        ",
+  };
+
+  private static boolean initComplete = false;
+
+  private final String defaultJdbcDriver;
+  private final String defaultJdbcUrl;
   private boolean exit = false;
   private final DatabaseConnections connections = new DatabaseConnections();
-  public static final String COMMAND_PREFIX = "!";
   private Collection<Driver> drivers = null;
-  private final SqlLineOpts opts = new SqlLineOpts(this, System.getProperties());
+  private final SqlLineOpts opts;
   private String lastProgress = null;
-  private final Map<SQLWarning, Date> seenWarnings = new HashMap<SQLWarning, Date>();
+  private final Map<SQLWarning, Date> seenWarnings =
+      new HashMap<SQLWarning, Date>();
   private final Commands commands = new Commands(this);
   private OutputFile scriptOutputFile = null;
   private OutputFile recordOutputFile = null;
@@ -74,111 +147,110 @@ public class SqlLine {
 
   static final Object[] EMPTY_OBJ_ARRAY = new Object[0];
 
-  private static boolean initComplete = false;
+  private final SqlLineSignalHandler signalHandler;
+  private final Completer sqlLineCommandCompleter;
 
-  private SqlLineSignalHandler signalHandler = null;
-  private Completer sqlLineCommandCompleter;
-
-  private final Map<Object, Object> formats = map(new Object[]{
+  private final Map<String, Object> formats = map(
       "vertical", new VerticalOutputFormat(this),
       "table", new TableOutputFormat(this),
       "csv", new SeparatedValuesOutputFormat(this, ','),
       "tsv", new SeparatedValuesOutputFormat(this, '\t'),
       "xmlattr", new XmlAttributeOutputFormat(this),
-      "xmlelements", new XmlElementOutputFormat(this),
-  });
+      "xmlelements", new XmlElementOutputFormat(this));
 
-  CommandHandler[] commandHandlers = new CommandHandler[]{
-      new ReflectiveCommandHandler(this, new String[]{"quit", "done", "exit"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"connect", "open"},
-          new Completer[]{ new StringsCompleter(getConnectionURLExamples())}),
-      new ReflectiveCommandHandler(this, new String[]{"describe"},
-          new Completer[]{new TableNameCompleter(this)}),
-      new ReflectiveCommandHandler(this, new String[]{"indexes"},
-          new Completer[]{new TableNameCompleter(this)}),
-      new ReflectiveCommandHandler(this, new String[]{"primarykeys"},
-          new Completer[]{new TableNameCompleter(this)}),
-      new ReflectiveCommandHandler(this, new String[]{"exportedkeys"},
-          new Completer[]{new TableNameCompleter(this)}),
-      new ReflectiveCommandHandler(this, new String[]{"manual"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"importedkeys"},
-          new Completer[]{new TableNameCompleter(this)}),
-      new ReflectiveCommandHandler(this, new String[]{"procedures"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"tables"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"typeinfo"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"columns"},
-          new Completer[]{new TableNameCompleter(this)}),
-      new ReflectiveCommandHandler(this, new String[]{"reconnect"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"dropall"},
-          new Completer[]{new TableNameCompleter(this)}),
-      new ReflectiveCommandHandler(this, new String[]{"history"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"metadata"},
-          new Completer[]{
-              new StringsCompleter(getMetadataMethodNames())}),
-      new ReflectiveCommandHandler(this, new String[]{"nativesql"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"dbinfo"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"rehash"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"verbose"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"run"},
-          new Completer[]{new FileNameCompleter()}),
-      new ReflectiveCommandHandler(this, new String[]{"batch"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"list"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"all"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"go", "#"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"script"},
-          new Completer[]{new FileNameCompleter()}),
-      new ReflectiveCommandHandler(this, new String[]{"record"},
-          new Completer[]{new FileNameCompleter()}),
-      new ReflectiveCommandHandler(this, new String[]{"brief"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"close"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"closeall"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"isolation"},
-          new Completer[]{new StringsCompleter(getIsolationLevels())}),
-      new ReflectiveCommandHandler(this, new String[]{"outputformat"},
-          new Completer[] {new StringsCompleter((String[]) formats.keySet().toArray(new String[0]))
-          }),
-      new ReflectiveCommandHandler(this, new String[]{"autocommit"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"commit"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"properties"},
-          new Completer[]{new FileNameCompleter()}),
-      new ReflectiveCommandHandler(this, new String[]{"rollback"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"help", "?"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"set"},
-          opts.optionCompletors()),
-      new ReflectiveCommandHandler(this, new String[]{"save"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"scan"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"sql"},
-          null),
-      new ReflectiveCommandHandler(this, new String[]{"call"},
-          null),
-  };
+  final CommandHandler[] commandHandlers;
 
-  static final SortedSet<String> KNOWN_DRIVERS = new TreeSet(Arrays.asList(
-      new String[]{
+  final CommandHandler[] createCommandHandlers() {
+    return new CommandHandler[] {
+      new ReflectiveCommandHandler(this, new String[] {"quit", "done", "exit"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"connect", "open"},
+          new Completer[] {new StringsCompleter(getConnectionURLExamples())}),
+      new ReflectiveCommandHandler(this, new String[] {"describe"},
+          new Completer[] {new TableNameCompleter(this)}),
+      new ReflectiveCommandHandler(this, new String[] {"indexes"},
+          new Completer[] {new TableNameCompleter(this)}),
+      new ReflectiveCommandHandler(this, new String[] {"primarykeys"},
+          new Completer[] {new TableNameCompleter(this)}),
+      new ReflectiveCommandHandler(this, new String[] {"exportedkeys"},
+          new Completer[] {new TableNameCompleter(this)}),
+      new ReflectiveCommandHandler(this, new String[] {"manual"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"importedkeys"},
+          new Completer[] {new TableNameCompleter(this)}),
+      new ReflectiveCommandHandler(this, new String[] {"procedures"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"tables"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"typeinfo"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"columns"},
+          new Completer[] {new TableNameCompleter(this)}),
+      new ReflectiveCommandHandler(this, new String[] {"reconnect"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"dropall"},
+          new Completer[] {new TableNameCompleter(this)}),
+      new ReflectiveCommandHandler(this, new String[] {"history"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"metadata"},
+          new Completer[] {new StringsCompleter(getMetadataMethodNames())}),
+      new ReflectiveCommandHandler(this, new String[] {"nativesql"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"dbinfo"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"rehash"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"verbose"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"run"},
+          new Completer[] {new FileNameCompleter()}),
+      new ReflectiveCommandHandler(this, new String[] {"batch"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"list"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"all"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"go", "#"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"script"},
+          new Completer[] {new FileNameCompleter()}),
+      new ReflectiveCommandHandler(this, new String[] {"record"},
+          new Completer[] {new FileNameCompleter()}),
+      new ReflectiveCommandHandler(this, new String[] {"brief"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"close"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"closeall"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"isolation"},
+          new Completer[] {new StringsCompleter(getIsolationLevels())}),
+      new ReflectiveCommandHandler(this, new String[] {"outputformat"},
+          new Completer[] {new StringsCompleter(formats.keySet())}),
+      new ReflectiveCommandHandler(this, new String[] {"autocommit"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"commit"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"properties"},
+          new Completer[] {new FileNameCompleter()}),
+      new ReflectiveCommandHandler(this, new String[] {"rollback"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"help", "?"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"set"},
+          getOpts().optionCompleters()),
+      new ReflectiveCommandHandler(this, new String[] {"save"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"scan"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"sql"},
+          null),
+      new ReflectiveCommandHandler(this, new String[] {"call"},
+          null),
+    };
+  }
+
+  static final SortedSet<String> KNOWN_DRIVERS = new TreeSet<String>(
+      Arrays.asList(
           "com.merant.datadirect.jdbc.sqlserver.SQLServerDriver",
           "com.microsoft.jdbc.sqlserver.SQLServerDriver",
           "com.ddtek.jdbc.informix.InformixDriver",
@@ -264,30 +336,30 @@ public class SqlLine {
           "weblogic.jdbc.pool.Driver",
           "com.sqlstream.jdbc.Driver",
           "org.luciddb.jdbc.LucidDbClientDriver",
-      }));
+          "org.apache.hive.jdbc.HiveDriver",
+          "org.apache.hadoop.hive.jdbc.HiveDriver"));
 
   static {
     String testClass = "jline.console.ConsoleReader";
     try {
       Class.forName(testClass);
     } catch (Throwable t) {
-      String message = locStatic(resourceBundle, System.err, "jline-missing", testClass);
+      String message =
+          locStatic(RESOURCE_BUNDLE, System.err, "jline-missing", testClass);
       throw new ExceptionInInitializerError(message);
     }
   }
 
-  static Manifest getManifest()
-      throws IOException {
+  static Manifest getManifest() throws IOException {
     URL base = SqlLine.class.getResource("/META-INF/MANIFEST.MF");
     URLConnection c = base.openConnection();
     if (c instanceof JarURLConnection) {
       return ((JarURLConnection) c).getManifest();
     }
-
     return null;
   }
 
-  static String getManifestAttribute(String name) {
+  String getManifestAttribute(String name) {
     try {
       Manifest m = getManifest();
       if (m == null) {
@@ -300,18 +372,23 @@ public class SqlLine {
       }
 
       String val = attrs.getValue(name);
-      if ((val == null) || "".equals(val)) {
+      if (val == null || "".equals(val)) {
         return "????";
       }
 
       return val;
     } catch (Exception e) {
-      e.printStackTrace();
+      e.printStackTrace(errorStream);
       return "?????";
     }
   }
 
-  String getApplicationTitle() {
+    /** Returns the name of the application.
+     *
+     * <p>Default is built by substituting artifactId and version from
+     * pom.properties into a string, returning something like "sqlline
+     * version 1.6". Derived class may override. */
+  protected String getApplicationTitle() {
     InputStream inputStream =
         getClass().getResourceAsStream(
             "/META-INF/maven/sqlline/sqlline/pom.properties");
@@ -330,7 +407,7 @@ public class SqlLine {
         properties.getProperty("version"));
   }
 
-  static String getApplicationContactInformation() {
+  String getApplicationContactInformation() {
     return getManifestAttribute("Implementation-Vendor");
   }
 
@@ -341,31 +418,31 @@ public class SqlLine {
   String loc(String res, int param) {
     try {
       return MessageFormat.format(
-          new ChoiceFormat(resourceBundle.getString(res)).format(param),
-          new Object[]{new Integer(param)});
+          new ChoiceFormat(RESOURCE_BUNDLE.getString(res)).format(param),
+          new Object[] {new Integer(param)});
     } catch (Exception e) {
       return res + ": " + param;
     }
   }
 
-  String loc(String res, Object param1) {
-    return loc(res, new Object[]{param1});
+  public String loc(String res, Object param1) {
+    return loc(res, new Object[] {param1});
   }
 
   String loc(String res, Object param1, Object param2) {
-    return loc(res, new Object[]{param1, param2});
+    return loc(res, new Object[] {param1, param2});
   }
 
   String loc(String res, Object[] params) {
-    return locStatic(resourceBundle, getErrorStream(), res, params);
+    return locStatic(RESOURCE_BUNDLE, getErrorStream(), res, params);
   }
 
-  static String locStatic(ResourceBundle resourceBundle, PrintStream err, String res, Object... params) {
+  static String locStatic(ResourceBundle resourceBundle, PrintStream err,
+      String res, Object... params) {
     try {
       return MessageFormat.format(resourceBundle.getString(res), params);
     } catch (Exception e) {
       e.printStackTrace(err);
-
       try {
         return res + ": " + Arrays.asList(params);
       } catch (Exception e2) {
@@ -383,7 +460,8 @@ public class SqlLine {
    */
   public static void main(String[] args)
       throws IOException {
-    start(args, null, true);
+    final SqlLine sqlLine = new SqlLine(false, null, null);
+    sqlLine.start2(Arrays.asList(args), null, true);
   }
 
   /**
@@ -398,20 +476,37 @@ public class SqlLine {
       String[] args,
       InputStream inputStream)
       throws IOException {
-    return start(args, inputStream, false);
+    final SqlLine sqlLine = new SqlLine(false, null, null);
+    return sqlLine.start2(Arrays.asList(args), inputStream, false);
   }
 
-  public SqlLine() {
+  protected SqlLine(boolean withSignalHandler, String defaultJdbcDriver,
+      String defaultJdbcUrl) {
+    this.defaultJdbcDriver = defaultJdbcDriver;
+    this.defaultJdbcUrl = defaultJdbcUrl;
+    this.opts = createOpts();
+    this.commandHandlers = createCommandHandlers();
     sqlLineCommandCompleter = new SqlLineCommandCompleter(this);
     reflector = new Reflector(this);
 
     // attempt to dynamically load signal handler
-    try {
-      Class handlerClass = Class.forName("sqlline.SunSignalHandler");
-      signalHandler = (SqlLineSignalHandler) handlerClass.newInstance();
-    } catch (Throwable t) {
-      handleException(t);
+    SqlLineSignalHandler signalHandler = null;
+    if (withSignalHandler) {
+      try {
+        Class handlerClass =
+            Class.forName("org.apache.hive.sqlline.SunSignalHandler");
+        signalHandler = (SqlLineSignalHandler) handlerClass.newInstance();
+      } catch (Throwable t) {
+        handleException(t);
+      }
     }
+    this.signalHandler = signalHandler;
+  }
+
+  /** Creates and initializes the options object. Derived class may override. */
+  protected SqlLineOpts createOpts() {
+    return new SqlLineOpts(this, System.getProperties(), "sqlline.properties",
+        "sqlline.rcfile");
   }
 
   /**
@@ -431,8 +526,15 @@ public class SqlLine {
       String[] args,
       InputStream inputStream,
       boolean saveHistory) throws IOException {
-    SqlLine sqlline = new SqlLine();
-    boolean retVal = sqlline.begin(args, inputStream, saveHistory);
+    return new SqlLine(false, null, null)
+        .start2(Arrays.asList(args), inputStream, saveHistory);
+  }
+
+  protected boolean start2(
+      List<String> args,
+      InputStream inputStream,
+      boolean saveHistory) throws IOException {
+    boolean retVal = begin(args, inputStream, saveHistory);
 
     // exit the system: useful for Hypersonic and other
     // badly-behaving systems
@@ -444,36 +546,42 @@ public class SqlLine {
   }
 
   DatabaseConnection getDatabaseConnection() {
-    return connections.current();
+    return getDatabaseConnections().current();
   }
 
-  Connection getConnection() {
-    if (getDatabaseConnections().current() == null) {
+  Connection getConnection() throws SQLException {
+    final DatabaseConnection databaseConnection =
+        getDatabaseConnections().current();
+    if (databaseConnection == null) {
       throw new IllegalArgumentException(loc("no-current-connection"));
     }
-    if (getDatabaseConnections().current().connection == null) {
+    final Connection connection = databaseConnection.getConnection();
+    if (connection == null) {
       throw new IllegalArgumentException(loc("no-current-connection"));
     }
-    return getDatabaseConnections().current().connection;
+    return connection;
   }
 
   DatabaseMetaData getDatabaseMetaData() {
-    if (connections.current() == null) {
+    final DatabaseConnection databaseConnection =
+        getDatabaseConnections().current();
+    if (databaseConnection == null) {
       throw new IllegalArgumentException(loc("no-current-connection"));
     }
-    if (connections.current().meta == null) {
+    final DatabaseMetaData metaData = databaseConnection.getDatabaseMetaData();
+    if (metaData == null) {
       throw new IllegalArgumentException(loc("no-current-connection"));
     }
-    return connections.current().meta;
+    return metaData;
   }
 
   public String[] getIsolationLevels() {
-    return new String[]{
-        "TRANSACTION_NONE",
-        "TRANSACTION_READ_COMMITTED",
-        "TRANSACTION_READ_UNCOMMITTED",
-        "TRANSACTION_REPEATABLE_READ",
-        "TRANSACTION_SERIALIZABLE",
+    return new String[] {
+      "TRANSACTION_NONE",
+      "TRANSACTION_READ_COMMITTED",
+      "TRANSACTION_READ_UNCOMMITTED",
+      "TRANSACTION_REPEATABLE_READ",
+      "TRANSACTION_SERIALIZABLE",
     };
   }
 
@@ -481,55 +589,50 @@ public class SqlLine {
     try {
       TreeSet<String> mnames = new TreeSet<String>();
       Method[] m = DatabaseMetaData.class.getDeclaredMethods();
-      for (int i = 0; (m != null) && (i < m.length); i++) {
+      for (int i = 0; m != null && i < m.length; i++) {
         mnames.add(m[i].getName());
       }
-
-      return mnames.toArray(new String[0]);
+      return mnames.toArray(new String[mnames.size()]);
     } catch (Throwable t) {
       return new String[0];
     }
   }
 
   public String[] getConnectionURLExamples() {
-    return new String[]{
-        "jdbc:JSQLConnect://<hostname>/database=<database>",
-        "jdbc:cloudscape:<database>;create=true",
-        "jdbc:twtds:sqlserver://<hostname>/<database>",
-        "jdbc:daffodilDB_embedded:<database>;create=true",
-        "jdbc:datadirect:db2://<hostname>:50000;databaseName=<database>",
-        "jdbc:inetdae:<hostname>:1433",
-        "jdbc:datadirect:oracle://<hostname>:1521;SID=<database>;"
-            + "MaxPooledStatements=0",
-        "jdbc:datadirect:sqlserver://<hostname>:1433;SelectMethod=cursor;"
-            + "DatabaseName=<database>",
-        "jdbc:datadirect:sybase://<hostname>:5000",
-        "jdbc:db2://<hostname>/<database>",
-        "jdbc:hsqldb:<database>",
-        "jdbc:idb:<database>.properties",
-        "jdbc:informix-sqli://<hostname>:1526/<database>:INFORMIXSERVER"
-            + "=<database>",
-        "jdbc:interbase://<hostname>//<database>.gdb",
-        "jdbc:luciddb:http://<hostname>",
-        "jdbc:microsoft:sqlserver://<hostname>:1433;"
-            + "DatabaseName=<database>;SelectMethod=cursor",
-        "jdbc:mysql://<hostname>/<database>?autoReconnect=true",
-        "jdbc:oracle:thin:@<hostname>:1521:<database>",
-        "jdbc:pointbase:<database>,database.home=<database>,create=true",
-        "jdbc:postgresql://<hostname>:5432/<database>",
-        "jdbc:postgresql:net//<hostname>/<database>",
-        "jdbc:sybase:Tds:<hostname>:4100/<database>?ServiceName=<database>",
-        "jdbc:weblogic:mssqlserver4:<database>@<hostname>:1433",
-        "jdbc:odbc:<database>",
-        "jdbc:sequelink://<hostname>:4003/[Oracle]",
-        "jdbc:sequelink://<hostname>:4004/[Informix];Database=<database>",
-        "jdbc:sequelink://<hostname>:4005/[Sybase];Database=<database>",
-        "jdbc:sequelink://<hostname>:4006/[SQLServer];Database=<database>",
-        "jdbc:sequelink://<hostname>:4011/[ODBC MS Access];"
-            + "Database=<database>",
-        "jdbc:openlink://<hostname>/DSN=SQLServerDB/UID=sa/PWD=",
-        "jdbc:solid://<hostname>:<port>/<UID>/<PWD>",
-        "jdbc:dbaw://<hostname>:8889/<database>",
+    return new String[] {
+      "jdbc:JSQLConnect://<hostname>/database=<database>",
+      "jdbc:cloudscape:<database>;create=true",
+      "jdbc:twtds:sqlserver://<hostname>/<database>",
+      "jdbc:daffodilDB_embedded:<database>;create=true",
+      "jdbc:datadirect:db2://<hostname>:50000;databaseName=<database>",
+      "jdbc:inetdae:<hostname>:1433",
+      "jdbc:datadirect:oracle://<hostname>:1521;SID=<database>;MaxPooledStatements=0",
+      "jdbc:datadirect:sqlserver://<hostname>:1433;SelectMethod=cursor;DatabaseName=<database>",
+      "jdbc:datadirect:sybase://<hostname>:5000",
+      "jdbc:db2://<hostname>/<database>",
+      "jdbc:hive2://<hostname>",
+      "jdbc:hsqldb:<database>",
+      "jdbc:idb:<database>.properties",
+      "jdbc:informix-sqli://<hostname>:1526/<database>:INFORMIXSERVER=<database>",
+      "jdbc:interbase://<hostname>//<database>.gdb",
+      "jdbc:luciddb:http://<hostname>",
+      "jdbc:microsoft:sqlserver://<hostname>:1433;DatabaseName=<database>;SelectMethod=cursor",
+      "jdbc:mysql://<hostname>/<database>?autoReconnect=true",
+      "jdbc:oracle:thin:@<hostname>:1521:<database>",
+      "jdbc:pointbase:<database>,database.home=<database>,create=true",
+      "jdbc:postgresql://<hostname>:5432/<database>",
+      "jdbc:postgresql:net//<hostname>/<database>",
+      "jdbc:sybase:Tds:<hostname>:4100/<database>?ServiceName=<database>",
+      "jdbc:weblogic:mssqlserver4:<database>@<hostname>:1433",
+      "jdbc:odbc:<database>",
+      "jdbc:sequelink://<hostname>:4003/[Oracle]",
+      "jdbc:sequelink://<hostname>:4004/[Informix];Database=<database>",
+      "jdbc:sequelink://<hostname>:4005/[Sybase];Database=<database>",
+      "jdbc:sequelink://<hostname>:4006/[SQLServer];Database=<database>",
+      "jdbc:sequelink://<hostname>:4011/[ODBC MS Access];Database=<database>",
+      "jdbc:openlink://<hostname>/DSN=SQLServerDB/UID=sa/PWD=",
+      "jdbc:solid://<hostname>:<port>/<UID>/<PWD>",
+      "jdbc:dbaw://<hostname>:8889/<database>",
     };
   }
 
@@ -543,7 +646,7 @@ public class SqlLine {
 
   /**
    * Entry point to creating a {@link ColorBuffer} with color enabled or
-   * disabled depending on the calue of {@link SqlLineOpts#getColor}.
+   * disabled depending on the value of {@link SqlLineOpts#getColor}.
    */
   ColorBuffer getColorBuffer(String msg) {
     return new ColorBuffer(msg, getOpts().getColor());
@@ -553,113 +656,127 @@ public class SqlLine {
    * Walk through all the known drivers and try to register them.
    */
   void registerKnownDrivers() {
-    for (Iterator i = KNOWN_DRIVERS.iterator(); i.hasNext(); ) {
+    for (String className : getKnownDrivers()) {
       try {
-        Class.forName(i.next().toString());
+        Class.forName(className);
       } catch (Throwable t) {
+        // ignore
       }
     }
   }
 
-  boolean initArgs(String[] args) {
-    List commands = new LinkedList();
-    List files = new LinkedList();
-    String driver = null, user = null, pass = null, url = null, cmd = null;
+  /** Returns class names of the JDBC drivers that should be registered by
+   * default. Derived class may override. */
+  protected Collection<String> getKnownDrivers() {
+    return KNOWN_DRIVERS;
+  }
 
-    for (int i = 0; i < args.length; i++) {
-      if (args[i].equals("--help") || args[i].equals("-h")) {
+  boolean initArgs(List<String> args) {
+    List<String> commands = new LinkedList<String>();
+    List<String> files = new LinkedList<String>();
+    String driver = null;
+    String user = null;
+    String pass = null;
+    String url = null;
+
+    for (int i = 0; i < args.size(); i++) {
+      final String arg = args.get(i);
+      if (arg.equals("--help") || arg.equals("-h")) {
         usage();
         return false;
       }
 
       // -- arguments are treated as properties
-      if (args[i].startsWith("--")) {
-        String[] parts = split(args[i].substring(2), "=");
-        debug(loc("setting-prop", Arrays.asList(parts)));
-        if (parts.length > 0) {
+      if (arg.startsWith("--")) {
+        List<String> parts = split(arg.substring(2), "=");
+        debug(loc("setting-prop", parts));
+        if (parts.size() > 0) {
           boolean ret;
 
-          if (parts.length >= 2) {
-            ret = opts.set(parts[0], parts[1], true);
+          if (parts.size() >= 2) {
+            ret = getOpts().set(parts.get(0), parts.get(1), true);
           } else {
-            ret = opts.set(parts[0], "true", true);
+            ret = getOpts().set(parts.get(0), "true", true);
           }
 
           if (!ret) {
             return false;
           }
         }
-
         continue;
       }
 
-      if (args[i].equals("-d")) {
-        driver = args[i++ + 1];
-      } else if (args[i].equals("-n")) {
-        user = args[i++ + 1];
-      } else if (args[i].equals("-p")) {
-        pass = args[i++ + 1];
-      } else if (args[i].equals("-u")) {
-        url = args[i++ + 1];
-      } else if (args[i].equals("-e")) {
-        commands.add(args[i++ + 1]);
+      if (arg.equals("-d")) {
+        driver = args.get(++i);
+      } else if (arg.equals("-n")) {
+        user = args.get(++i);
+      } else if (arg.equals("-p")) {
+        pass = args.get(++i);
+      } else if (arg.equals("-u")) {
+        url = args.get(++i);
+      } else if (arg.equals("-e")) {
+        commands.add(args.get(++i));
       } else {
-        files.add(args[i]);
+        files.add(arg);
       }
     }
 
+    if (url == null) {
+      url = defaultJdbcUrl;
+    }
+    if (driver == null) {
+      driver = defaultJdbcDriver;
+    }
+
     if (url != null) {
-      String com =
-          COMMAND_PREFIX + "connect "
-              + url + " "
-              + (((user == null) || (user.length() == 0)) ? "''" : user) + " "
-              + (((pass == null) || (pass.length() == 0)) ? "''" : pass) + " "
-              + ((driver == null) ? "" : driver);
+      String com = COMMAND_PREFIX + "connect "
+          + url + " "
+          + (user == null || user.length() == 0 ? "''" : user) + " "
+          + (pass == null || pass.length() == 0 ? "''" : pass) + " "
+          + (driver == null ? "" : driver);
       debug("issuing: " + com);
       dispatch(com, new DispatchCallback());
     }
 
     // now load properties files
-    for (Iterator i = files.iterator(); i.hasNext(); ) {
-      dispatch(
-          COMMAND_PREFIX + "properties " + i.next(),
-          new DispatchCallback());
+    for (String file : files) {
+      dispatch(COMMAND_PREFIX + "properties " + file, new DispatchCallback());
     }
 
     if (commands.size() > 0) {
-      // for single commane execute, disable color
-      opts.setColor(false);
-      opts.setHeaderInterval(-1);
+      // for single command execute, disable color
+      getOpts().setColor(false);
+      getOpts().setHeaderInterval(-1);
 
-      for (Iterator i = commands.iterator(); i.hasNext(); ) {
-        String command = i.next().toString();
+      for (String command : commands) {
         debug(loc("executing-command", command));
         dispatch(command, new DispatchCallback());
       }
-
       exit = true; // execute and exit
     }
 
     // if a script file was specified, run the file and quit
-    if (opts.getRun() != null) {
-      dispatch(
-          COMMAND_PREFIX + "run " + opts.getRun(),
+    if (getOpts().getRun() != null) {
+      dispatch(COMMAND_PREFIX + "run " + getOpts().getRun(),
           new DispatchCallback());
       dispatch(COMMAND_PREFIX + "quit", new DispatchCallback());
     }
-
     return true;
   }
 
   /**
-   * Start accepting input from stdin, and dispatch it to the appropriate
-   * {@link CommandHandler} until the global variable <code>exit</code> is
-   * true.
+   * Starts accepting input from an input stream, and dispatches commands from
+   * that input to the appropriate {@link CommandHandler} until the global
+   * variable <code>exit</code> is true.
+   *
+   * @return Whether successful
    */
-  boolean begin(String[] args, InputStream inputStream, boolean saveHistory)
+  public boolean begin(List<String> args, InputStream inputStream,
+      boolean saveHistory)
       throws IOException {
     try {
-      opts.load();
+      // load the options first, so we can override on the command line
+      getOpts().load();
     } catch (Exception e) {
       handleException(e);
     }
@@ -667,7 +784,7 @@ public class SqlLine {
     FileHistory fileHistory =
         new FileHistory(new File(opts.getHistoryFile()));
     ConsoleReader reader = getConsoleReader(inputStream, fileHistory);
-    if (!(initArgs(args))) {
+    if (!initArgs(args)) {
       usage();
       return false;
     }
@@ -684,7 +801,9 @@ public class SqlLine {
     DispatchCallback callback = new DispatchCallback();
     while (!exit) {
       try {
-        signalHandler.setCallback(callback);
+        if (signalHandler != null) {
+          signalHandler.setCallback(callback);
+        }
         dispatch(reader.readLine(getPrompt()), callback);
         if (saveHistory) {
           fileHistory.flush();
@@ -706,11 +825,17 @@ public class SqlLine {
         callback.setToFailure();
       }
     }
-    // ### NOTE jvs 10-Aug-2004:  Clean up any outstanding
+    // ### NOTE jvs 10-Aug-2004: Clean up any outstanding
     // connections automatically.
     // nothing is done with the callback beyond
     commands.closeall(null, new DispatchCallback());
     return callback.isSuccess();
+  }
+
+  public void close() {
+    final DispatchCallback callback = new DispatchCallback();
+    commands.quit(null, callback);
+    commands.closeall(null, callback);
   }
 
   public ConsoleReader getConsoleReader(
@@ -730,10 +855,7 @@ public class SqlLine {
     }
     if (inputStream != null) {
       // ### NOTE:  fix for sf.net bug 879425.
-      consoleReader =
-          new ConsoleReader(
-              inputStream,
-              System.out);
+      consoleReader = new ConsoleReader(inputStream, System.out);
     } else {
       consoleReader = new ConsoleReader();
     }
@@ -753,9 +875,7 @@ public class SqlLine {
   /**
    * Dispatch the specified line to the appropriate {@link CommandHandler}.
    *
-   * @param line
-   *          the commmand-line to dispatch
-   * @return true if the command was "successful"
+   * @param line the command-line to dispatch
    */
   void dispatch(String line, DispatchCallback callback) {
     if (line == null) {
@@ -784,12 +904,13 @@ public class SqlLine {
     }
 
     if (line.startsWith(COMMAND_PREFIX)) {
-      Map cmdMap = new TreeMap();
+      final Map<String, CommandHandler> cmdMap =
+          new TreeMap<String, CommandHandler>();
       line = line.substring(1);
-      for (int i = 0; i < commandHandlers.length; i++) {
-        String match = commandHandlers[i].matches(line);
+      for (CommandHandler commandHandler : commandHandlers) {
+        String match = commandHandler.matches(line);
         if (match != null) {
-          cmdMap.put(match, commandHandlers[i]);
+          cmdMap.put(match, commandHandler);
         }
       }
 
@@ -798,14 +919,11 @@ public class SqlLine {
         error(loc("unknown-command", line));
       } else if (cmdMap.size() > 1) {
         callback.setStatus(DispatchCallback.Status.FAILURE);
-        error(
-            loc(
-                "multiple-matches",
-                cmdMap.keySet().toString()));
+        error(loc("multiple-matches", cmdMap.keySet().toString()));
       } else {
         callback.setStatus(DispatchCallback.Status.RUNNING);
-        ((CommandHandler) cmdMap.values().iterator().next()).execute(line,
-            callback);
+        final CommandHandler commandHandler = cmdMap.values().iterator().next();
+        commandHandler.execute(line, callback);
       }
     } else {
       callback.setStatus(DispatchCallback.Status.RUNNING);
@@ -842,7 +960,6 @@ public class SqlLine {
     if (trimmed.length() == 0) {
       return false;
     }
-
     return !trimmed.endsWith(";");
   }
 
@@ -878,25 +995,31 @@ public class SqlLine {
   }
 
   void info(String msg) {
-    if (!(opts.getSilent())) {
-      output(msg, true, System.err);
+    if (!getOpts().isSilent()) {
+      output(msg, true, getErrorStream());
     }
   }
 
   void info(ColorBuffer msg) {
-    if (!(opts.getSilent())) {
-      output(msg, true, System.err);
+    if (!getOpts().isSilent()) {
+      output(msg, true, getErrorStream());
     }
   }
 
   /**
-   * Issue the specified error message
+   * Issue the specified error message.
    *
    * @param msg the message to issue
    * @return false always
    */
   boolean error(String msg) {
-    output(getColorBuffer().red(msg), true, System.err);
+    if (initComplete) {
+      output(getColorBuffer().red(msg), true, getErrorStream());
+    } else {
+      // Write to the error stream directly. error() depends
+      // on properties like text coloring that may not be set yet.
+      getErrorStream().println(msg);
+    }
     return false;
   }
 
@@ -906,8 +1029,8 @@ public class SqlLine {
   }
 
   void debug(String msg) {
-    if (opts.getVerbose()) {
-      output(getColorBuffer().blue(msg), true, System.err);
+    if (getOpts().getVerbose()) {
+      output(getColorBuffer().blue(msg), true, getErrorStream());
     }
   }
 
@@ -920,7 +1043,7 @@ public class SqlLine {
   }
 
   void output(ColorBuffer msg, boolean newline) {
-    output(msg, newline, System.out);
+    output(msg, newline, getOutputStream());
   }
 
   void output(ColorBuffer msg, boolean newline, PrintStream out) {
@@ -965,15 +1088,13 @@ public class SqlLine {
     if (!(assertConnection())) {
       return false;
     }
-
     try {
-      if (getDatabaseConnection().connection.getAutoCommit()) {
+      if (getDatabaseConnection().getConnection().getAutoCommit()) {
         return error(loc("autocommit-needs-off"));
       }
     } catch (Exception e) {
       return error(e);
     }
-
     return true;
   }
 
@@ -985,17 +1106,20 @@ public class SqlLine {
    */
   boolean assertConnection() {
     try {
-      if ((getDatabaseConnection() == null) || (getDatabaseConnection().connection == null)) {
+      final DatabaseConnection databaseConnection = getDatabaseConnection();
+      if (databaseConnection == null) {
         return error(loc("no-current-connection"));
       }
-
-      if (getDatabaseConnection().connection.isClosed()) {
+      final Connection connection = databaseConnection.getConnection();
+      if (connection == null) {
+        return error(loc("no-current-connection"));
+      }
+      if (connection.isClosed()) {
         return error(loc("connection-is-closed"));
       }
     } catch (SQLException sqle) {
       return error(loc("no-current-connection"));
     }
-
     return true;
   }
 
@@ -1003,16 +1127,17 @@ public class SqlLine {
    * Print out any warnings that exist for the current connection.
    */
   void showWarnings() {
-    if (getDatabaseConnection().connection == null) {
-      return;
-    }
-
-    if (!opts.getShowWarnings()) {
-      return;
-    }
-
     try {
-      showWarnings(getDatabaseConnection().connection.getWarnings());
+      final Connection connection = getDatabaseConnection().getConnection();
+      if (connection == null) {
+        return;
+      }
+
+      if (!getOpts().getShowWarnings()) {
+        return;
+      }
+
+      showWarnings(connection.getWarnings());
     } catch (Exception e) {
       handleException(e);
     }
@@ -1042,29 +1167,33 @@ public class SqlLine {
   }
 
   String getPrompt() {
-    if ((getDatabaseConnection() == null) || (getDatabaseConnection().getUrl() == null)) {
+    final DatabaseConnection databaseConnection = getDatabaseConnection();
+    if (databaseConnection == null) {
+      return "sqlline> ";
+    }
+    final String url = databaseConnection.getUrl();
+    if (url == null) {
       return "sqlline> ";
     } else {
-      return getPrompt(connections.getIndex() + ": " + getDatabaseConnection().getUrl()) + "> ";
+      return getPrompt(connections.getIndex() + ": " + url) + "> ";
     }
   }
 
   static String getPrompt(String url) {
-    if ((url == null) || (url.length() == 0)) {
+    if (url == null || url.length() == 0) {
       url = "sqlline";
     }
-
-    if (url.indexOf(";") > -1) {
-      url = url.substring(0, url.indexOf(";"));
+    final int semicolon = url.indexOf(";");
+    if (semicolon > -1) {
+      url = url.substring(0, semicolon);
     }
-    if (url.indexOf("?") > -1) {
-      url = url.substring(0, url.indexOf("?"));
+    final int question = url.indexOf("?");
+    if (question > -1) {
+      url = url.substring(0, question);
     }
-
     if (url.length() > 45) {
       url = url.substring(0, 45);
     }
-
     return url;
   }
 
@@ -1077,10 +1206,9 @@ public class SqlLine {
    */
   int getSize(ResultSet rs) {
     try {
-      if (rs.getType() == rs.TYPE_FORWARD_ONLY) {
+      if (rs.getType() == ResultSet.TYPE_FORWARD_ONLY) {
         return -1;
       }
-
       rs.last();
       int total = rs.getRow();
       rs.beforeFirst();
@@ -1093,41 +1221,29 @@ public class SqlLine {
     }
   }
 
-  ResultSet getColumns(String table)
-      throws SQLException {
-    if (!(assertConnection())) {
+  ResultSet getColumns(String table) throws SQLException {
+    if (!assertConnection()) {
       return null;
     }
-
-    return getDatabaseConnection().meta.getColumns(
-        getDatabaseConnection().meta.getConnection().getCatalog(),
-        null,
-        table,
-        "%");
+    final DatabaseMetaData metaData = getDatabaseConnection().meta;
+    final String catalog = metaData.getConnection().getCatalog();
+    return metaData.getColumns(catalog, null, table, "%");
   }
 
-  ResultSet getTables()
-      throws SQLException {
-    if (!(assertConnection())) {
+  ResultSet getTables() throws SQLException {
+    if (!assertConnection()) {
       return null;
     }
-
-    return getDatabaseConnection().meta.getTables(
-        getDatabaseConnection().meta.getConnection().getCatalog(),
-        null,
-        "%",
-        new String[]{"TABLE"});
+    final DatabaseMetaData metaData = getDatabaseConnection().meta;
+    final String s = metaData.getConnection().getCatalog();
+    return metaData.getTables(s, null, "%", new String[] {"TABLE"});
   }
 
-  String[] getColumnNames(DatabaseMetaData meta)
-      throws SQLException {
-    Set names = new HashSet();
-
+  String[] getColumnNames(DatabaseMetaData meta) throws SQLException {
+    final Set<String> names = new HashSet<String>();
     info(loc("building-tables"));
-
     try {
       ResultSet columns = getColumns("%");
-
       try {
         int total = getSize(columns);
         int index = 0;
@@ -1142,19 +1258,15 @@ public class SqlLine {
           String name = columns.getString("TABLE_NAME");
           names.add(name);
           names.add(columns.getString("COLUMN_NAME"));
-          names.add(
-              columns.getString("TABLE_NAME") + "."
-                  + columns.getString("COLUMN_NAME"));
+          names.add(columns.getString("TABLE_NAME") + "."
+              + columns.getString("COLUMN_NAME"));
         }
-
         progress(index, index);
       } finally {
         columns.close();
       }
-
       info(loc("done"));
-
-      return (String[]) names.toArray(new String[0]);
+      return names.toArray(new String[names.size()]);
     } catch (Throwable t) {
       handleException(t);
       return new String[0];
@@ -1162,13 +1274,40 @@ public class SqlLine {
   }
 
 
+  // //////////////////
+  // String utilities
+  // //////////////////
+
+  /** Returns an iterable that tokenizes a string. */
+  public static Iterable<String> tokenize(final String str,
+      final String delim) {
+    return new Iterable<String>() {
+      final StringTokenizer tokenizer = new StringTokenizer(str, delim);
+      public Iterator<String> iterator() {
+        return new Iterator<String>() {
+          public boolean hasNext() {
+            return tokenizer.hasMoreTokens();
+          }
+
+          public String next() {
+            return tokenizer.nextToken();
+          }
+
+          public void remove() {
+            throw new UnsupportedOperationException();
+          }
+        };
+      }
+    };
+  }
+
   /**
-   * Split the line into an array by tokenizing on space characters
+   * Split the line into a list by tokenizing on space characters
    *
    * @param line the line to break up
-   * @return an array of individual words
+   * @return a list of individual words, never null
    */
-  String[] split(String line) {
+  List<String> split(String line) {
     return split(line, " ");
   }
 
@@ -1209,16 +1348,16 @@ public class SqlLine {
       --n;
     }
 
-    final List words = new ArrayList();
-    final List current = new ArrayList();
-    for (int i = 0; i < n; ) {
+    final List<String[]> words = new ArrayList<String[]>();
+    final List<String> current = new ArrayList<String>();
+    for (int i = 0; i < n;) {
       char c = chars[i];
       switch (state) {
       case SPACE:
       case DOT_SPACE:
         ++i;
         if (Character.isWhitespace(c)) {
-          ;
+          // nothing
         } else if (c == '.') {
           state = DOT_SPACE;
         } else if (c == quoting.start) {
@@ -1307,7 +1446,7 @@ public class SqlLine {
       words.add(current.toArray(new String[current.size()]));
     }
 
-    return (String[][]) words.toArray(new String[words.size()][]);
+    return words.toArray(new String[words.size()][]);
   }
 
   /**
@@ -1334,37 +1473,27 @@ public class SqlLine {
     if (str == null) {
       return null;
     }
-
-    while (
-        (str.startsWith("'") && str.endsWith("'"))
-            || (str.startsWith("\"") && str.endsWith("\""))) {
+    while ((str.startsWith("'") && str.endsWith("'"))
+        || (str.startsWith("\"") && str.endsWith("\""))) {
       str = str.substring(1, str.length() - 1);
     }
-
     return str;
   }
 
-  String[] split(String line, String delim) {
-    StringTokenizer tok = new StringTokenizer(line, delim);
-    String[] ret = new String[tok.countTokens()];
-    int index = 0;
-    while (tok.hasMoreTokens()) {
-      String t = tok.nextToken();
-
-      t = dequote(t);
-
-      ret[index++] = t;
+  List<String> split(String line, String delim) {
+    final List<String> list = new ArrayList<String>();
+    for (String t : tokenize(line, delim)) {
+      list.add(dequote(t));
     }
-
-    return ret;
+    return list;
   }
 
-  static Map<Object, Object> map(Object[] obs) {
-    Map<Object, Object> m = new HashMap<Object, Object>();
-    for (int i = 0; i < (obs.length - 1); i += 2) {
-      m.put(obs[i], obs[i + 1]);
+  static <K, V> Map<K, V> map(Object... obs) {
+    Map<K, V> m = new HashMap<K, V>();
+    for (int i = 0; i < obs.length - 1; i += 2) {
+      //noinspection unchecked
+      m.put((K) obs[i], (V) obs[i + 1]);
     }
-
     return Collections.unmodifiableMap(m);
   }
 
@@ -1391,15 +1520,13 @@ public class SqlLine {
       return source;
     }
 
-    StringBuffer replaced = new StringBuffer();
-
-    int index = -1;
+    StringBuilder replaced = new StringBuilder();
+    int index;
     while ((index = source.indexOf(from)) != -1) {
       replaced.append(source.substring(0, index));
       replaced.append(to);
       source = source.substring(index + from.length());
     }
-
     replaced.append(source);
 
     return replaced.toString();
@@ -1415,14 +1542,12 @@ public class SqlLine {
    *                  words.
    * @return the split lines, or null if the assertion failed.
    */
-  String[] split(String line, int assertLen, String usage) {
-    String[] ret = split(line);
-
-    if (ret.length != assertLen) {
+  List<String> split(String line, int assertLen, String usage) {
+    List<String> ret = split(line);
+    if (ret.size() != assertLen) {
       error(usage);
       return null;
     }
-
     return ret;
   }
 
@@ -1434,28 +1559,24 @@ public class SqlLine {
    * @param start  the number of spaces to pad at the beginning of a line
    * @return the wrapped string
    */
-  String wrap(String toWrap, int len, int start) {
-    String cur = toWrap;
-    StringBuffer buff = new StringBuffer();
-    StringBuffer line = new StringBuffer();
+  public static String wrap(String toWrap, int len, int start) {
+    final StringBuilder buff = new StringBuilder();
+    final StringBuilder line = new StringBuilder();
+    final String head = spaces(start);
 
-    char[] head = new char[start];
-    Arrays.fill(head, ' ');
-
-    for (
-        StringTokenizer tok = new StringTokenizer(toWrap, " ");
-        tok.hasMoreTokens(); ) {
-      String next = tok.nextToken();
-      if ((line.length() + next.length()) > len) {
-        buff.append(line).append(separator).append(head);
+    for (String next : tokenize(toWrap, " ")) {
+      if (line.length() + next.length() > len) {
+        buff.append(line).append(SEPARATOR).append(head);
         line.setLength(0);
       }
 
-      line.append((line.length() == 0) ? "" : " ").append(next);
+      if (line.length() > 0) {
+        line.append(' ');
+      }
+      line.append(next);
     }
 
     buff.append(line);
-
     return buff.toString();
   }
 
@@ -1466,7 +1587,7 @@ public class SqlLine {
    * @param max the maximum progress, or -1 if unknown
    */
   void progress(int cur, int max) {
-    StringBuffer out = new StringBuffer();
+    StringBuilder out = new StringBuilder();
 
     if (lastProgress != null) {
       char[] back = new char[lastProgress.length()];
@@ -1475,13 +1596,13 @@ public class SqlLine {
     }
 
     String progress =
-        cur + "/" + ((max == -1) ? "?" : ("" + max)) + " "
-            + ((max == -1) ? "(??%)"
-            : ("(" + (cur * 100 / ((max == 0) ? 1 : max)) + "%)"));
-    ;
+        cur + "/"
+        + (max == -1 ? "?" : "" + max) + " "
+        + (max == -1 ? "(??%)"
+           : ("(" + (cur * 100 / (max == 0 ? 1 : max)) + "%)"));
 
-    if ((cur >= max) && (max != -1)) {
-      progress += " " + loc("done") + separator;
+    if (cur >= max && max != -1) {
+      progress += " " + loc("done") + SEPARATOR;
       lastProgress = null;
     } else {
       lastProgress = progress;
@@ -1489,8 +1610,8 @@ public class SqlLine {
 
     out.append(progress);
 
-    System.out.print(out.toString());
-    System.out.flush();
+    outputStream.print(out.toString());
+    outputStream.flush();
   }
 
   ///////////////////////////////
@@ -1504,7 +1625,7 @@ public class SqlLine {
 
     if (e instanceof SQLException) {
       handleSQLException((SQLException) e);
-    } else if ((!initComplete) && !(opts.getVerbose())) {
+    } else if (!initComplete && !getOpts().getVerbose()) {
       // all init errors must be verbose
       if (e.getMessage() == null) {
         error(e.getClass().getName());
@@ -1512,17 +1633,18 @@ public class SqlLine {
         error(e.getMessage());
       }
     } else {
-      e.printStackTrace(System.err);
+      e.printStackTrace(getErrorStream());
     }
   }
 
   void handleSQLException(SQLException e) {
     // all init errors must be verbose
+    final SqlLineOpts opts = getOpts();
     final boolean showWarnings = !initComplete || opts.getShowWarnings();
     final boolean verbose = !initComplete || opts.getVerbose();
     final boolean showNested = !initComplete || opts.getShowNestedErrs();
 
-    if ((e instanceof SQLWarning) && !showWarnings) {
+    if (e instanceof SQLWarning && !showWarnings) {
       return;
     }
 
@@ -1531,25 +1653,23 @@ public class SqlLine {
     error(
         loc(
             (e instanceof SQLWarning) ? "Warning" : "Error",
-            new Object[]{
-                (e.getMessage() == null) ? "" : e.getMessage().trim(),
-                (e.getSQLState() == null) ? "" : e.getSQLState().trim(),
-                new Integer(e.getErrorCode())
+            new Object[] {
+              (e.getMessage() == null) ? "" : e.getMessage().trim(),
+              (e.getSQLState() == null) ? "" : e.getSQLState().trim(),
+              e.getErrorCode()
             }));
 
     if (verbose) {
-      e.printStackTrace();
+      e.printStackTrace(getErrorStream());
     }
 
     if (!showNested) {
       return;
     }
 
-    for (
-        SQLException nested = e.getNextException();
-        (nested != null)
-            && (nested != e);
-        nested = nested.getNextException()) {
+    for (SQLException nested = e.getNextException();
+         nested != null && nested != e;
+         nested = nested.getNextException()) {
       handleSQLException(nested);
     }
   }
@@ -1582,56 +1702,61 @@ public class SqlLine {
     }
   }
 
+  /** Adapts an {@link Enumeration} into an {@link Iterable}. */
+  public static <E> Iterable<E> iterable(final Enumeration<E> enumeration) {
+    return new Iterable<E>() {
+      public Iterator<E> iterator() {
+        return new Iterator<E>() {
+          public boolean hasNext() {
+            return enumeration.hasMoreElements();
+          }
+
+          public E next() {
+            return enumeration.nextElement();
+          }
+
+          public void remove() {
+            throw new UnsupportedOperationException();
+          }
+        };
+      }
+    };
+  }
+
   private Driver findRegisteredDriver(String url) {
-    for (
-        Enumeration drivers = DriverManager.getDrivers();
-        (drivers != null) && drivers.hasMoreElements(); ) {
-      Driver driver = (Driver) drivers.nextElement();
+    for (Driver driver : iterable(DriverManager.getDrivers())) {
       try {
         if (driver.acceptsURL(url)) {
           return driver;
         }
       } catch (Exception e) {
+        // ignore
       }
     }
-
     return null;
   }
 
-  Driver[] scanDrivers(String line)
-      throws IOException {
+  List<Driver> scanDrivers(String line) throws IOException {
     return scanDrivers(false);
   }
 
-  Driver[] scanDrivers(boolean knownOnly)
-      throws IOException {
-    long start = System.currentTimeMillis();
-
-    Set classNames = new HashSet();
-
+  List<Driver> scanDrivers(boolean knownOnly) throws IOException {
+    final long start = System.currentTimeMillis();
+    final Set<String> classNames = new HashSet<String>();
     if (!knownOnly) {
-      classNames.addAll(
-          Arrays.asList(
-              ClassNameCompleter.getClassNames()));
+      Collections.addAll(classNames, ClassNameCompleter.getClassNames());
     }
+    classNames.addAll(getKnownDrivers());
 
-    classNames.addAll(KNOWN_DRIVERS);
-
-    Set<Driver> driverClasses = new HashSet<Driver>();
-
-    for (Iterator<String> i = classNames.iterator(); i.hasNext(); ) {
-      String className = i.next();
-
-      if (className.toLowerCase().indexOf("driver") == -1) {
+    final Set<Driver> driverClasses = new HashSet<Driver>();
+    for (String className : classNames) {
+      if (!className.toLowerCase().contains("driver")) {
         continue;
       }
 
       try {
-        Class c =
-            Class.forName(
-                className,
-                false,
-                Thread.currentThread().getContextClassLoader());
+        Class c = Class.forName(className, false,
+            Thread.currentThread().getContextClassLoader());
         if (!Driver.class.isAssignableFrom(c)) {
           continue;
         }
@@ -1643,11 +1768,12 @@ public class SqlLine {
         // now instantiate and initialize it
         driverClasses.add((Driver) c.newInstance());
       } catch (Throwable t) {
+        // ignore
       }
     }
     long end = System.currentTimeMillis();
     info("scan complete in " + (end - start) + "ms");
-    return driverClasses.toArray(new Driver[driverClasses.size()]);
+    return new ArrayList<Driver>(driverClasses);
   }
 
   ///////////////////////////////////////
@@ -1655,12 +1781,12 @@ public class SqlLine {
   ///////////////////////////////////////
 
   int print(ResultSet rs, DispatchCallback callback) throws SQLException {
+    final SqlLineOpts opts = getOpts();
     String format = opts.getOutputFormat();
     OutputFormat f = (OutputFormat) formats.get(format);
 
     if (f == null) {
-      error(loc("unknown-format", new Object[]{
-          format, formats.keySet()}));
+      error(loc("unknown-format", new Object[] {format, formats.keySet()}));
       f = new TableOutputFormat(this);
     }
 
@@ -1671,82 +1797,132 @@ public class SqlLine {
     } else {
       rows = new BufferedRows(this, rs);
     }
-
     return f.print(rows);
   }
 
   Statement createStatement() throws SQLException {
-    Statement stmnt = getDatabaseConnection().connection.createStatement();
+    final Connection connection = getDatabaseConnection().getConnection();
+    Statement stmnt = connection.createStatement();
+    final SqlLineOpts opts = getOpts();
     if (opts.timeout > -1) {
       stmnt.setQueryTimeout(opts.timeout);
     }
     if (opts.rowLimit != 0) {
       stmnt.setMaxRows(opts.rowLimit);
     }
-
     return stmnt;
+  }
+
+  PreparedStatement prepare(String sql) throws SQLException {
+    final Connection connection = getDatabaseConnection().getConnection();
+    return connection.prepareCall(sql);
   }
 
   void runBatch(List<String> statements) {
     try {
       Statement stmnt = createStatement();
       try {
-        for (Iterator<String> i = statements.iterator(); i.hasNext(); ) {
-          stmnt.addBatch(i.next());
+        for (String statement : statements) {
+          stmnt.addBatch(statement);
         }
-
         int[] counts = stmnt.executeBatch();
 
-        output(
-            getColorBuffer().pad(getColorBuffer().bold("COUNT"), 8).append(
-                getColorBuffer().bold("STATEMENT")));
+        output(getColorBuffer().pad(getColorBuffer().bold("COUNT"), 8)
+            .append(getColorBuffer().bold("STATEMENT")));
 
-        for (int i = 0; (counts != null) && (i < counts.length); i++) {
-          output(
-              getColorBuffer().pad(counts[i] + "", 8).append(
-                  statements.get(i)));
+        for (int i = 0; counts != null && i < counts.length; i++) {
+          output(getColorBuffer().pad(counts[i] + "", 8)
+              .append(statements.get(i)));
         }
       } finally {
         try {
           stmnt.close();
         } catch (Exception e) {
+          // ignore
         }
       }
     } catch (Exception e) {
       handleException(e);
     }
+  }
+
+  /** Returns a string consisting of {@code n} spaces. */
+  static String spaces(int n) {
+    if (n < SPACES.length) {
+      return SPACES[n];
+    }
+    final char[] chars = new char[n];
+    Arrays.fill(chars, ' ');
+    return new String(chars);
+  }
+
+  /** Pads a string with spaces to at least a given length. */
+  protected static String pad(String str, int len) {
+    if (str == null) {
+      return spaces(len);
+    }
+    final int v = str.length();
+    if (v >= len) {
+      return str;
+    }
+    return str + SqlLine.spaces(len - v);
+  }
+
+  protected static String center(String str, int len) {
+    int n = len - str.length();
+    if (n <= 0) {
+      return str;
+    }
+    final StringBuilder buf = new StringBuilder();
+    int left = n / 2;
+    if (left > 0) {
+      buf.append(SqlLine.spaces(left));
+    }
+    buf.append(str);
+    int right = n - left;
+    if (right > 0) {
+      buf.append(SqlLine.spaces(right));
+    }
+    return buf.toString();
+  }
+  /** Returns the prefix to print before each command. Derived class may
+   * override. */
+  protected String prefix(int index, int size) {
+    return pad(index + "/" + size, 13);
   }
 
   public int runCommands(List<String> cmds, DispatchCallback callback) {
     int successCount = 0;
-
     try {
       int index = 1;
-      int size = cmds.size();
-      for (Iterator<String> i = cmds.iterator(); i.hasNext(); ) {
-        String cmd = i.next();
-        info(getColorBuffer().pad((index++) + "/" + (size), 13).append(cmd));
+      for (String cmd : cmds) {
+        info(getColorBuffer().append(prefix(index++, cmds.size())).append(cmd));
         dispatch(cmd, callback);
         boolean success = callback.isSuccess();
-        // if we do not force script execution, abort
-        // when a failure occurs.
-        if (!success && !opts.getForce()) {
-          error(loc("abort-on-error", cmd));
-          return successCount;
+        if (success) {
+          ++successCount;
+        } else {
+          // if we do not force script execution, abort
+          // when a failure occurs.
+          if (!getOpts().getForce()) {
+            error(loc("abort-on-error", cmd));
+            return successCount;
+          }
         }
-        successCount += success ? 1 : 0;
       }
     } catch (Exception e) {
       handleException(e);
     }
-
     return successCount;
   }
 
-  void setCompletions()
-      throws SQLException, IOException {
+  // ////////////////////////
+  // Command methods follow
+  // ////////////////////////
+
+  void setCompletions() throws SQLException, IOException {
     if (getDatabaseConnection() != null) {
-      getDatabaseConnection().setCompletions(opts.getFastConnect());
+      getDatabaseConnection().setCompletions(getOpts().getFastConnect());
     }
   }
 
@@ -1775,7 +1951,7 @@ public class SqlLine {
   }
 
   public static String getSeparator() {
-    return separator;
+    return SEPARATOR;
   }
 
   Commands getCommands() {

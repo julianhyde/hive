@@ -1,3 +1,20 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.hive.sqlline;
 
 import java.sql.ResultSet;
@@ -8,16 +25,17 @@ import java.util.NoSuchElementException;
  * Rows implementation which returns rows incrementally from result set
  * without any buffering.
  */
-class IncrementalRows extends Rows {
+public class IncrementalRows extends Rows {
   private final ResultSet rs;
-  private Row labelRow;
-  private Row maxRow;
+  private final Row labelRow;
+  private final Row maxRow;
   private Row nextRow;
   private boolean endOfResult;
   private boolean normalizingWidths;
   private DispatchCallback dispatchCallback;
 
-  IncrementalRows(SqlLine sqlLine, ResultSet rs, DispatchCallback dispatchCallback)
+  IncrementalRows(SqlLine sqlLine, ResultSet rs,
+      DispatchCallback dispatchCallback)
       throws SQLException {
     super(sqlLine, rs);
     this.rs = rs;
@@ -62,24 +80,23 @@ class IncrementalRows extends Rows {
         throw new RuntimeException(ex.toString());
       }
     }
-
-    return (nextRow != null);
+    return nextRow != null;
   }
 
-  public Object next() {
+  public Row next() {
     if (!hasNext() && !dispatchCallback.isCanceled()) {
       throw new NoSuchElementException();
     }
 
-    Object ret = nextRow;
+    Row ret = nextRow;
     nextRow = null;
     return ret;
   }
 
+  @Override
   void normalizeWidths() {
     // normalize label row
     labelRow.sizes = maxRow.sizes;
-
     // and remind ourselves to perform incremental normalization
     // for each row as it is produced
     normalizingWidths = true;

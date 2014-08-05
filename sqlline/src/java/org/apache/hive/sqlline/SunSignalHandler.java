@@ -15,39 +15,45 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-/*
- * This source file is based on code taken from SQLLine 1.0.2
- * See SQLLine notice in LICENSE
- */
-package org.apache.hive.beeline;
+package org.apache.hive.sqlline;
 
 import java.sql.SQLException;
-import java.sql.Statement;
 
 import sun.misc.Signal;
 import sun.misc.SignalHandler;
 
-public class SunSignalHandler implements BeeLineSignalHandler, SignalHandler {
-  private Statement stmt = null;
+/**
+ * A signal handler for SqlLine that which interprets Ctrl+C as a request to
+ * cancel the currently executing query.
+ *
+ * <p>Adapted from
+ * <a href="http://www.smotricz.com/kabutz/Issue043.html">TJSN</a>.
+ */
+class SunSignalHandler implements SqlLineSignalHandler, SignalHandler {
+  private DispatchCallback dispatchCallback;
 
-  SunSignalHandler () {
+  SunSignalHandler() {
     // Interpret Ctrl+C as a request to cancel the currently
     // executing query.
-    Signal.handle (new Signal ("INT"), this);
+    Signal.handle(new Signal("INT"), this);
   }
 
-  public void setStatement(Statement stmt) {
-    this.stmt = stmt;
+  public void setCallback(DispatchCallback dispatchCallback) {
+    this.dispatchCallback = dispatchCallback;
   }
 
-  public void handle (Signal signal) {
+  public void handle(Signal sig) {
     try {
-      if (stmt != null) {
-        stmt.cancel();
+      synchronized (this) {
+        if (dispatchCallback != null) {
+          dispatchCallback.forceKillSqlQuery();
+          dispatchCallback.setToCancel();
+        }
       }
     } catch (SQLException ex) {
-      // ignore
+      throw new RuntimeException(ex);
     }
   }
 }
+
+// End SunSignalHandler.java
