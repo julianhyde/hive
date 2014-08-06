@@ -17,8 +17,10 @@
  */
 package org.apache.hive.sqlline;
 
+import java.io.ByteArrayInputStream;
 import java.io.EOFException;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
@@ -716,6 +718,8 @@ public class SqlLine {
         url = args.get(++i);
       } else if (arg.equals("-e")) {
         commands.add(args.get(++i));
+      } else if (arg.equals("-f")) {
+        getOpts().setScriptFile(args.get(++i));
       } else {
         files.add(arg);
       }
@@ -783,10 +787,29 @@ public class SqlLine {
 
     FileHistory fileHistory =
         new FileHistory(new File(opts.getHistoryFile()));
-    ConsoleReader reader = getConsoleReader(inputStream, fileHistory);
     if (!initArgs(args)) {
       usage();
       return false;
+    }
+
+    final DispatchCallback callback = new DispatchCallback();
+    ConsoleReader reader;
+    final boolean runningScript = getOpts().getScriptFile() != null;
+    if (runningScript) {
+      try {
+        FileInputStream scriptStream =
+            new FileInputStream(getOpts().getScriptFile());
+        reader = getConsoleReader(scriptStream, fileHistory);
+      } catch (Throwable t) {
+        handleException(t);
+        commands.quit(null, callback);
+
+        // Set up a dummy console reader to complete proceedings.
+        final InputStream emptyStream = new ByteArrayInputStream(new byte[0]);
+        reader = getConsoleReader(emptyStream, null);
+      }
+    } else {
+      reader = getConsoleReader(inputStream, fileHistory);
     }
 
     try {
@@ -798,7 +821,6 @@ public class SqlLine {
     // basic setup done. From this point on, honor opts value for showing
     // exception
     initComplete = true;
-    DispatchCallback callback = new DispatchCallback();
     while (!exit) {
       try {
         if (signalHandler != null) {
@@ -807,6 +829,9 @@ public class SqlLine {
         dispatch(reader.readLine(getPrompt()), callback);
         if (saveHistory) {
           fileHistory.flush();
+        }
+        if (runningScript && callback.isFailure()) {
+          commands.quit(null, callback);
         }
       } catch (EOFException eof) {
         // CTRL-D

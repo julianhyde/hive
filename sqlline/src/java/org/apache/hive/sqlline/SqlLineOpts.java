@@ -67,11 +67,10 @@ public class SqlLineOpts implements Completer {
   private String isolation = DEFAULT_ISOLATION_LEVEL;
   private String outputFormat = "table";
   private boolean trimScripts = true;
-
   private final File rcFile;
   private String historyFile;
-
   private String runFile;
+  private String scriptFile;
 
   public SqlLineOpts(SqlLine sqlLine, Properties props, String propFileName,
       String rcfilePropName) {
@@ -335,6 +334,14 @@ public class SqlLineOpts implements Completer {
 
   public String getHistoryFile() {
     return this.historyFile;
+  }
+
+  public void setScriptFile(String scriptFile) {
+    this.scriptFile = scriptFile;
+  }
+
+  public String getScriptFile() {
+    return scriptFile;
   }
 
   public void setColor(boolean color) {
