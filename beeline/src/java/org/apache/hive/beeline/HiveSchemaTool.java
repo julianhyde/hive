@@ -49,6 +49,7 @@ import org.apache.hadoop.hive.metastore.HiveMetaException;
 import org.apache.hadoop.hive.metastore.MetaStoreSchemaInfo;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hive.beeline.HiveSchemaHelper.NestedScriptParser;
+import org.apache.hive.sqlline.SqlLine;
 
 public class HiveSchemaTool {
   private String userName = null;
@@ -372,9 +373,13 @@ public class HiveSchemaTool {
     }
     //beeLine.getOpts().setAllowMultiLineCommand(false);
     beeLine.getOpts().setIsolation("TRANSACTION_READ_COMMITTED");
-    boolean ok = beeLine.begin(argList, null, false);
-    if (!ok) {
-      throw new IOException("Schema script failed, errorcode " + ok);
+    SqlLine.Status status = beeLine.begin(argList, null, false);
+    switch (status) {
+    case OK:
+      break;
+    default:
+      throw new IOException("Schema script failed, error code " + status + " ("
+          + status.ordinal() + ")");
     }
   }
 

@@ -248,7 +248,7 @@ public class BeeLine extends SqlLine {
    * @param args        same as main()
    * @param inputStream redirected input, or null to use standard input
    */
-  public static boolean mainWithInputRedirection(
+  public static Status mainWithInputRedirection(
       String[] args,
       InputStream inputStream)
       throws IOException {

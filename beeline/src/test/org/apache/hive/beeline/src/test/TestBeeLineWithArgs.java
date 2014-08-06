@@ -21,8 +21,10 @@ import java.io.File;
 import java.io.PrintStream;
 import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
+import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 
+import org.apache.hive.sqlline.DispatchCallback;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -213,5 +215,30 @@ public class TestBeeLineWithArgs {
       e.printStackTrace();
       throw e;
     }
+  }
+
+  /**
+   * HIVE-4566
+   * @throws UnsupportedEncodingException
+   */
+  @Test
+  public void testNPE() throws UnsupportedEncodingException {
+    SqlLine sqlLine = new BeeLine();
+
+    ByteArrayOutputStream os = new ByteArrayOutputStream();
+    PrintStream sqllineOutputStream = new PrintStream(os);
+    sqlLine.setOutputStream(sqllineOutputStream);
+    sqlLine.setErrorStream(sqllineOutputStream);
+
+    final DispatchCallback callback = new DispatchCallback();
+    sqlLine.runCommands(Arrays.asList("!typeinfo"), callback);
+    String output = os.toString("UTF8");
+    Assert.assertFalse( output.contains("java.lang.NullPointerException") );
+    Assert.assertTrue( output.contains("No current connection") );
+
+    sqlLine.runCommands(Arrays.asList("!nativesql"), callback);
+    output = os.toString("UTF8");
+    Assert.assertFalse( output.contains("java.lang.NullPointerException") );
+    Assert.assertTrue( output.contains("No current connection") );
   }
 }
