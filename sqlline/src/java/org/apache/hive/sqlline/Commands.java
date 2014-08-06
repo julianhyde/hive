@@ -211,6 +211,10 @@ public class Commands {
   }
 
   public void metadata(String cmd, List argList, DispatchCallback callback) {
+    if (!sqlLine.assertConnection()) {
+      callback.setToFailure();
+      return;
+    }
     try {
       final DatabaseMetaData metaData = sqlLine.getDatabaseMetaData();
       final Set<String> methodNames = new TreeSet<String>();
@@ -384,7 +388,7 @@ public class Commands {
     if (sql.startsWith("native")) {
       sql = sql.substring("native".length() + 1);
     }
-    String nat = sqlLine.getDatabaseConnection().getConnection().nativeSQL(sql);
+    String nat = sqlLine.getConnection().nativeSQL(sql);
     sqlLine.output(nat);
     callback.setToSuccess();
   }
