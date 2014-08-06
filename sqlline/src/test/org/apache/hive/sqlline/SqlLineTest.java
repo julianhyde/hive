@@ -17,7 +17,9 @@
  */
 package org.apache.hive.sqlline;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.util.Collections;
 
@@ -117,10 +119,24 @@ public class SqlLineTest {
     final SqlLine line = new SqlLine(false, null, null);
     final PrintStream ps = new PrintStream(out);
     line.setOutputStream(ps);
+    line.setErrorStream(ps);
     line.runCommands(Collections.singletonList("!manual"),
         new DispatchCallback());
     ps.flush();
     assertThat(out.toString().contains("License and Terms of Use"), is(true));
+  }
+
+  @Test public void testError() throws IOException {
+    final SqlLine line = new SqlLine(false, null, null);
+    final ByteArrayOutputStream out = new ByteArrayOutputStream();
+    final PrintStream ps = new PrintStream(out);
+    line.setOutputStream(ps);
+    line.setErrorStream(ps);
+    final ByteArrayInputStream inputStream =
+        new ByteArrayInputStream("!bad-command\n".getBytes());
+    SqlLine.Status status =
+        line.begin(Collections.<String>emptyList(), inputStream, false);
+    assertThat(status, equalTo(SqlLine.Status.OTHER));
   }
 
   @Test public void testWrap() {

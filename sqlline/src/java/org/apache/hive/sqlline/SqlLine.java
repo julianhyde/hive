@@ -468,13 +468,13 @@ public class SqlLine {
 
   /**
    * Starts the program with redirected input. For redirected output,
-   * System.setOut and System.setErr can be used, but System.setIn will not
-   * work.
+   * setOutputStream() and setErrorStream can be used.
    *
    * @param args        same as main()
    * @param inputStream redirected input, or null to use standard input
+   * @return Status code, never null
    */
-  public static boolean mainWithInputRedirection(
+  public static Status mainWithInputRedirection(
       String[] args,
       InputStream inputStream)
       throws IOException {
@@ -523,8 +523,9 @@ public class SqlLine {
    * @param saveHistory whether or not the commands issued will be saved to
    *                    sqlline's history file
    * @throws IOException
+   * @return 0 on success, 1 on invalid arguments, and 2 on any other error
    */
-  public static boolean start(
+  public static Status start(
       String[] args,
       InputStream inputStream,
       boolean saveHistory) throws IOException {
@@ -532,19 +533,19 @@ public class SqlLine {
         .start2(Arrays.asList(args), inputStream, saveHistory);
   }
 
-  protected boolean start2(
+  protected Status start2(
       List<String> args,
       InputStream inputStream,
       boolean saveHistory) throws IOException {
-    boolean retVal = begin(args, inputStream, saveHistory);
+    Status status = begin(args, inputStream, saveHistory);
 
     // exit the system: useful for Hypersonic and other
     // badly-behaving systems
     if (!Boolean.getBoolean(SqlLineOpts.PROPERTY_NAME_EXIT)) {
-      System.exit(retVal ? 1 : 0);
+      System.exit(status.ordinal());
     }
 
-    return retVal;
+    return status;
   }
 
   DatabaseConnection getDatabaseConnection() {
@@ -773,11 +774,12 @@ public class SqlLine {
    * that input to the appropriate {@link CommandHandler} until the global
    * variable <code>exit</code> is true.
    *
-   * @return Whether successful
+   * @return 0 on success, 1 on invalid arguments, and 2 on any other error
    */
-  public boolean begin(List<String> args, InputStream inputStream,
+  public Status begin(List<String> args, InputStream inputStream,
       boolean saveHistory)
       throws IOException {
+    Status status = Status.OK;
     try {
       // load the options first, so we can override on the command line
       getOpts().load();
@@ -789,7 +791,7 @@ public class SqlLine {
         new FileHistory(new File(opts.getHistoryFile()));
     if (!initArgs(args)) {
       usage();
-      return false;
+      return Status.ARGS;
     }
 
     final DispatchCallback callback = new DispatchCallback();
@@ -803,6 +805,7 @@ public class SqlLine {
       } catch (Throwable t) {
         handleException(t);
         commands.quit(null, callback);
+        status = Status.OTHER;
 
         // Set up a dummy console reader to complete proceedings.
         final InputStream emptyStream = new ByteArrayInputStream(new byte[0]);
@@ -832,6 +835,7 @@ public class SqlLine {
         }
         if (runningScript && callback.isFailure()) {
           commands.quit(null, callback);
+          status = Status.OTHER;
         }
       } catch (EOFException eof) {
         // CTRL-D
@@ -848,13 +852,17 @@ public class SqlLine {
       } catch (Throwable t) {
         handleException(t);
         callback.setToFailure();
+        status = Status.OTHER;
       }
     }
     // ### NOTE jvs 10-Aug-2004: Clean up any outstanding
     // connections automatically.
     // nothing is done with the callback beyond
     commands.closeall(null, new DispatchCallback());
-    return callback.isSuccess();
+    if (callback.isFailure()) {
+      status = Status.OTHER;
+    }
+    return status;
   }
 
   public void close() {
@@ -2037,6 +2045,17 @@ public class SqlLine {
 
   public Completer getCommandCompleter() {
     return sqlLineCommandCompleter;
+  }
+
+  /** Exit status returned to the operating system. OK, ARGS, OTHER
+   * correspond to 0, 1, 2. */
+  public enum Status {
+    /** Success. */
+    OK,
+    /** Arguments are invalid. */
+    ARGS,
+    /** Any other error besides arguments. */
+    OTHER
   }
 }
 
