@@ -25,6 +25,7 @@ import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Collection;
 <<<<<<< HEAD
+<<<<<<< HEAD
 import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
@@ -41,6 +42,12 @@ import java.util.Set;
 =======
 import java.util.Properties;
 >>>>>>> Merge beeline package into sqlline.
+=======
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+>>>>>>> HIVE-4568 - Beeline needs to support resolving variables (Xuefu Zhang reviewed by Thejas M Nair)
 import java.util.SortedSet;
 import java.util.TreeSet;
 <<<<<<< HEAD
@@ -89,16 +96,12 @@ public class BeeLine extends SqlLine {
           "org.apache.hive.jdbc.HiveDriver",
           "com.mysql.jdbc.DatabaseMetaData"));
 
+  private static final String HIVE_VAR_PREFIX = "--hivevar";
+
   @Override
   protected SqlLineOpts createOpts() {
     final SqlLineOpts opts =
-        new SqlLineOpts((SqlLine) this, new Properties(), "beeline.properties",
-            "beeline.rcfile") {
-      public boolean isCautious() {
-        // Bug-compatibility mode.
-        return true;
-      }
-    };
+        new BeeLineOpts(BeeLine.this);
     opts.setAutoCommit(false);
     opts.setIncremental(false);
     opts.setShowWarnings(false);
@@ -1628,5 +1631,58 @@ public class BeeLine extends SqlLine {
         false ? BEELINE_DEFAULT_JDBC_DRIVER : null,
         false ? BEELINE_DEFAULT_JDBC_URL : null);
 >>>>>>> Merge beeline package into sqlline.
+  }
+
+  @Override
+  protected int customArg(List<String> args, int i) {
+    final String arg = args.get(i);
+
+    // Parse hive variables
+    if (arg.equals(HIVE_VAR_PREFIX)) {
+      List<String> parts = split(args.get(i + 1), "=");
+      if (parts.size() != 2) {
+        return -1;
+      }
+      getOpts().getHiveVariables().put(parts.get(0), parts.get(1));
+      return i + 2; // 2 args consumed
+    }
+
+    return i; // no args consumed
+  }
+
+  @Override
+  public BeeLineOpts getOpts() {
+    return (BeeLineOpts) super.getOpts();
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>Append hive variables specified on the command line to the connection
+   * url (after #). They will be set later on the session on the server side.
+   */
+  @Override
+  public String fixUpUrl(String url) {
+    final StringBuilder sb = new StringBuilder(url);
+    Map<String, String> hiveVars = getOpts().getHiveVariables();
+    if (hiveVars.size() > 0) {
+      if (!url.contains("#")) {
+        sb.append("#");
+      } else {
+        sb.append("&");
+      }
+      Set<Map.Entry<String, String>> vars = hiveVars.entrySet();
+      Iterator<Map.Entry<String, String>> it = vars.iterator();
+      while (it.hasNext()) {
+        Map.Entry<String, String> var = it.next();
+        sb.append(var.getKey());
+        sb.append("=");
+        sb.append(var.getValue());
+        if (it.hasNext()) {
+          sb.append("&");
+        }
+      }
+    }
+    return sb.toString();
   }
 }

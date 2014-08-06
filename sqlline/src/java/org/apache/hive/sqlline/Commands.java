@@ -1080,7 +1080,8 @@ public class Commands {
 
     try {
       sqlLine.getDatabaseConnections().setConnection(
-          new DatabaseConnection(sqlLine, driver, url, username, password));
+          new DatabaseConnection(sqlLine, driver, sqlLine.fixUpUrl(url),
+              username, password));
       sqlLine.getDatabaseConnection().getConnection();
 
       sqlLine.setCompletions();
