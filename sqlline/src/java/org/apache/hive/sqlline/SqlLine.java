@@ -689,6 +689,18 @@ public class SqlLine {
         return false;
       }
 
+      // Give sub-class opportunity to parse its arguments.
+      final int i2 = customArg(args, i);
+      if (i2 < 0) {
+        // Sub-class had an error.
+        return false;
+      }
+      if (i2 > i) {
+        // At least one argument was consumed. Go to the top of the loop.
+        i = i2 - 1;
+        continue;
+      }
+
       // -- arguments are treated as properties
       if (arg.startsWith("--")) {
         List<String> parts = split(arg.substring(2), "=");
@@ -767,6 +779,28 @@ public class SqlLine {
       dispatch(COMMAND_PREFIX + "quit", new DispatchCallback());
     }
     return true;
+  }
+
+  /** Performs custom argument parsing.
+   *
+   * <p>Derived classes may override this method to parse custom arguments.</p>
+   *
+   * <p>If an argument is recognized, returns the index of the next argument to
+   * be parsed. (For example, returns {@code i + 2} after recognizing two
+   * arguments "{@code -C 10}".)</p>
+   *
+   * <p>If there is an error, returns -1, which will cause SqlLine to abort
+   * argument parsing.</p>
+   *
+   * <p>The default implementation does nothing, and returns {@code i}
+   * unchanged.</p>
+   *
+   * @param args Argument list
+   * @param i Index of argument to parse
+   * @return Index of next argument to parse, or -1 on error
+   */
+  protected int customArg(List<String> args, int i) {
+    return i;
   }
 
   /**
@@ -1513,7 +1547,7 @@ public class SqlLine {
     return str;
   }
 
-  List<String> split(String line, String delim) {
+  protected List<String> split(String line, String delim) {
     final List<String> list = new ArrayList<String>();
     for (String t : tokenize(line, delim)) {
       list.add(dequote(t));
@@ -2045,6 +2079,16 @@ public class SqlLine {
 
   public Completer getCommandCompleter() {
     return sqlLineCommandCompleter;
+  }
+
+  /** Modifies a the URL of a JDBC connection, just before the connection is
+   * made.
+   *
+   * <p>This is an opportunity to append connection-specific variables to the
+   * URL. The default implementation returns the URL unchanged.</p>
+   */
+  public String fixUpUrl(String url) {
+    return url;
   }
 
   /** Exit status returned to the operating system. OK, ARGS, OTHER
