@@ -172,17 +172,17 @@ class DatabaseConnection {
     meta = connection.getMetaData();
 
     try {
-      sqlLine.debug(sqlLine.loc("connected", new Object[] {
-          meta.getDatabaseProductName(),
-          meta.getDatabaseProductVersion()}));
+      sqlLine.debug(
+          sqlLine.loc("connected", meta.getDatabaseProductName(),
+              meta.getDatabaseProductVersion()));
     } catch (Exception e) {
       sqlLine.handleException(e);
     }
 
     try {
-      sqlLine.debug(sqlLine.loc("driver", new Object[] {
-          meta.getDriverName(),
-          meta.getDriverVersion()}));
+      sqlLine.debug(
+          sqlLine.loc("driver", meta.getDriverName(),
+              meta.getDriverVersion()));
     } catch (Exception e) {
       sqlLine.handleException(e);
     }

@@ -282,6 +282,19 @@ public class TestBeeLineWithArgs {
     System.out.println(">>> PASSED " + "testNPE");
   }
 
+  /**
+   * Checks that BeeLine uses its own resources, not SqlLine's.
+   */
+  @Test
+  public void testResource() throws Throwable {
+    String output = testCommandLineScript(Arrays.asList("--help"));
+    // BeeLine's usage string refers to --hiveconf; SqlLine's does not.
+    Assert.assertTrue(output,
+        output.contains(
+            "--hiveconf property=value       Use value for given property"));
+    System.out.println(">>> PASSED " + "testResource");
+  }
+
   @Test
   public void testHiveVarSubstitution() throws Throwable {
     List<String> argList = getBaseArgs(JDBC_URL + "#D_TBL=dummy_t");

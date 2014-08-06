@@ -226,7 +226,7 @@ public class SqlLineOpts implements Completer {
       return true;
     } catch (Exception e) {
       if (!quiet) {
-        sqlLine.error(sqlLine.loc("error-setting", new Object[]{key, e}));
+        sqlLine.error(sqlLine.loc("error-setting", key, e));
       }
       return false;
     }
