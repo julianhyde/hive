@@ -88,7 +88,7 @@ import jline.console.history.FileHistory;
  * </ul>
  */
 public class SqlLine {
-  private static final ResourceBundle RESOURCE_BUNDLE =
+  protected static final ResourceBundle RESOURCE_BUNDLE =
       ResourceBundle.getBundle(SqlLine.class.getName());
 
   private static final String SEPARATOR = System.getProperty("line.separator");
@@ -146,8 +146,6 @@ public class SqlLine {
   // order using reflection to find setter methods. Avoid
   // confusion/NullPointer due about order of config by prefixing it.
   public static final String SQLLINE_BASE_DIR = "x.sqlline.basedir";
-
-  static final Object[] EMPTY_OBJ_ARRAY = new Object[0];
 
   private final SqlLineSignalHandler signalHandler;
   private final Completer sqlLineCommandCompleter;
@@ -346,8 +344,8 @@ public class SqlLine {
     try {
       Class.forName(testClass);
     } catch (Throwable t) {
-      String message =
-          locStatic(RESOURCE_BUNDLE, System.err, "jline-missing", testClass);
+      String message = locStatic(RESOURCE_BUNDLE, System.err, "jline-missing",
+          new Object[] {testClass});
       throw new ExceptionInInitializerError(message);
     }
   }
@@ -413,40 +411,40 @@ public class SqlLine {
     return getManifestAttribute("Implementation-Vendor");
   }
 
-  String loc(String res) {
-    return loc(res, EMPTY_OBJ_ARRAY);
+  /** Returns the resource bundle. */
+  protected ResourceBundle res() {
+    return RESOURCE_BUNDLE;
   }
 
-  String loc(String res, int param) {
+  /** Returns a localized message, using a choice format. */
+  String locChoice(String res, int param) {
     try {
       return MessageFormat.format(
-          new ChoiceFormat(RESOURCE_BUNDLE.getString(res)).format(param),
-          new Object[] {new Integer(param)});
+          new ChoiceFormat(res().getString(res)).format(param),
+          param);
     } catch (Exception e) {
       return res + ": " + param;
     }
   }
 
-  public String loc(String res, Object param1) {
-    return loc(res, new Object[] {param1});
+  /** Returns a localized message, with a variable number of arguments. */
+  public String loc(String res, Object... params) {
+    return locV(res, params);
   }
 
-  String loc(String res, Object param1, Object param2) {
-    return loc(res, new Object[] {param1, param2});
-  }
-
-  String loc(String res, Object[] params) {
-    return locStatic(RESOURCE_BUNDLE, getErrorStream(), res, params);
+  /** Returns a localized message, with an array of arguments. */
+  public String locV(String res, Object[] params) {
+    return locStatic(res(), getErrorStream(), res, params);
   }
 
   static String locStatic(ResourceBundle resourceBundle, PrintStream err,
-      String res, Object... params) {
+      String res, Object[] params) {
     try {
       return MessageFormat.format(resourceBundle.getString(res), params);
     } catch (Exception e) {
       e.printStackTrace(err);
       try {
-        return res + ": " + Arrays.asList(params);
+        return res + ": " + Arrays.toString(params);
       } catch (Exception e2) {
         return res;
       }
@@ -454,7 +452,7 @@ public class SqlLine {
   }
 
   protected String locElapsedTime(long milliseconds) {
-    return loc("time-ms", new Object[] {milliseconds / 1000d});
+    return loc("time-ms", milliseconds / 1000d);
   }
 
   /**
@@ -1718,13 +1716,10 @@ public class SqlLine {
     String type = (e instanceof SQLWarning) ? loc("Warning") : loc("Error");
 
     error(
-        loc(
-            (e instanceof SQLWarning) ? "Warning" : "Error",
-            new Object[] {
-              (e.getMessage() == null) ? "" : e.getMessage().trim(),
-              (e.getSQLState() == null) ? "" : e.getSQLState().trim(),
-              e.getErrorCode()
-            }));
+        loc((e instanceof SQLWarning) ? "Warning" : "Error",
+            (e.getMessage() == null) ? "" : e.getMessage().trim(),
+            (e.getSQLState() == null) ? "" : e.getSQLState().trim(),
+            e.getErrorCode()));
 
     if (verbose) {
       e.printStackTrace(getErrorStream());
@@ -1853,7 +1848,7 @@ public class SqlLine {
     OutputFormat f = (OutputFormat) formats.get(format);
 
     if (f == null) {
-      error(loc("unknown-format", new Object[] {format, formats.keySet()}));
+      error(loc("unknown-format", format, formats.keySet()));
       f = new TableOutputFormat(this);
     }
 

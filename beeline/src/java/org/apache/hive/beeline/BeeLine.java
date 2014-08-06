@@ -24,9 +24,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.MissingResourceException;
+import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -51,6 +55,13 @@ public class BeeLine extends SqlLine {
           "com.mysql.jdbc.DatabaseMetaData"));
 
   private static final String HIVE_VAR_PREFIX = "--hivevar";
+
+  /** Combined resource bundle that first looks in BeeLine.properties, then in
+   * SqlLine.properties. */
+  private static final ResourceBundle BEE_LINE_RESOURCE_BUNDLE =
+      new ChainResourceBundle(
+          Arrays.asList(ResourceBundle.getBundle(BeeLine.class.getName()),
+              SqlLine.RESOURCE_BUNDLE));
 
   @Override
   protected SqlLineOpts createOpts() {
@@ -87,17 +98,15 @@ public class BeeLine extends SqlLine {
   protected String getApplicationTitle() {
     Package pack = BeeLine.class.getPackage();
 
-    return loc("app-introduction", new Object[] {
-        "Beeline",
+    return loc("app-introduction", "Beeline",
         pack.getImplementationVersion() == null ? "???"
             : pack.getImplementationVersion(),
-        "Apache Hive",
+        "Apache Hive");
         // getManifestAttribute ("Specification-Title"),
         // getManifestAttribute ("Implementation-Version"),
         // getManifestAttribute ("Implementation-ReleaseDate"),
         // getManifestAttribute ("Implementation-Vendor"),
         // getManifestAttribute ("Implementation-License"),
-    });
   }
 
   /**
@@ -184,5 +193,52 @@ public class BeeLine extends SqlLine {
       }
     }
     return sb.toString();
+  }
+
+  @Override
+  protected ResourceBundle res() {
+    return BEE_LINE_RESOURCE_BUNDLE;
+  }
+
+  /** Resource bundle that looks in a list of underlying resource bundles. */
+  static class ChainResourceBundle extends ResourceBundle {
+    private final List<ResourceBundle> bundles;
+
+    ChainResourceBundle(List<ResourceBundle> bundles) {
+      this.bundles = bundles;
+    }
+
+    @Override
+    protected Object handleGetObject(String key) {
+      for (ResourceBundle bundle : bundles) {
+        try {
+          return bundle.getObject(key);
+        } catch (MissingResourceException e) {
+          // no resource -- look in next bundle
+        }
+      }
+      return null;
+    }
+
+    @Override
+    public Enumeration<String> getKeys() {
+      final Set<String> keys = new HashSet<String>();
+      for (ResourceBundle bundle : bundles) {
+        final Enumeration<String> keyEnumeration = bundle.getKeys();
+        while (keyEnumeration.hasMoreElements()) {
+          keys.add(keyEnumeration.nextElement());
+        }
+      }
+      final Iterator<String> keyIterator = keys.iterator();
+      return new Enumeration<String>() {
+        public boolean hasMoreElements() {
+          return keyIterator.hasNext();
+        }
+
+        public String nextElement() {
+          return keyIterator.next();
+        }
+      };
+    }
   }
 }

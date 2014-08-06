@@ -277,8 +277,8 @@ public class Commands {
       if (def != null) {
         return def;
       }
-      throw new IllegalArgumentException(sqlLine.loc("arg-usage",
-          new Object[] {ret.get(0), paramname}));
+      throw new IllegalArgumentException(
+          sqlLine.loc("arg-usage", ret.get(0), paramname));
     }
     return ret.get(1);
   }
@@ -311,8 +311,9 @@ public class Commands {
     String[] compound;
     if (ret == null || ret.length != 2) {
       if (defaultValues[defaultValues.length - 1] == null) {
-        throw new IllegalArgumentException(sqlLine.loc("arg-usage",
-            new Object[] {ret.length == 0 ? "" : ret[0][0], paramName}));
+        throw new IllegalArgumentException(
+            sqlLine.loc("arg-usage", ret.length == 0 ? "" : ret[0][0],
+                paramName));
       }
       compound = new String[0];
     } else {
@@ -472,7 +473,7 @@ public class Commands {
     }
 
     sqlLine.info(
-        sqlLine.loc("drivers-found-count", sqlLine.getDrivers().size()));
+        sqlLine.locChoice("drivers-found-count", sqlLine.getDrivers().size()));
 
     // unique the list
     for (Driver driver : sqlLine.getDrivers()) {
@@ -876,7 +877,8 @@ public class Commands {
               int count = sqlLine.print(rs, callback);
               long end = System.currentTimeMillis();
 
-              reportResult(sqlLine.loc("rows-selected", count), start, end);
+              reportResult(sqlLine.locChoice("rows-selected", count), start,
+                  end);
             } finally {
               rs.close();
             }
@@ -884,7 +886,7 @@ public class Commands {
         } else {
           int count = stmnt.getUpdateCount();
           long end = System.currentTimeMillis();
-          reportResult(sqlLine.loc("rows-affected", count), start, end);
+          reportResult(sqlLine.locChoice("rows-affected", count), start, end);
         }
       } finally {
         if (stmnt != null) {
@@ -1118,7 +1120,8 @@ public class Commands {
     int index = 0;
     final DatabaseConnections databaseConnections =
         sqlLine.getDatabaseConnections();
-    sqlLine.info(sqlLine.loc("active-connections", databaseConnections.size()));
+    sqlLine.info(sqlLine.locChoice("active-connections",
+        databaseConnections.size()));
 
     for (DatabaseConnection c : databaseConnections) {
       boolean closed;
