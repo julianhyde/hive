@@ -793,7 +793,8 @@ public class Commands {
 
     // use multiple lines for statements not terminated by ";"
     try {
-      while (!(line.trim().endsWith(";"))) {
+      while (!line.trim().endsWith(";")
+          && sqlLine.getOpts().isAllowMultiLineCommand()) {
         StringBuilder prompt = new StringBuilder(sqlLine.getPrompt());
         for (int i = 0; i < prompt.length() - 1; i++) {
           if (prompt.charAt(i) != '>') {

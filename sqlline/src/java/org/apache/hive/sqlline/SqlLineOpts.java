@@ -67,6 +67,7 @@ public class SqlLineOpts implements Completer {
   private String isolation = DEFAULT_ISOLATION_LEVEL;
   private String outputFormat = "table";
   private boolean trimScripts = true;
+  private boolean allowMultiLineCommand = true;
   private final File rcFile;
   private String historyFile;
   private String runFile;
@@ -439,4 +440,13 @@ public class SqlLineOpts implements Completer {
   public boolean isCautious() {
     return false;
   }
+
+  public boolean isAllowMultiLineCommand() {
+    return allowMultiLineCommand;
+  }
+
+  public void setAllowMultiLineCommand(boolean allowMultiLineCommand) {
+    this.allowMultiLineCommand = allowMultiLineCommand;
+  }
+
 }
