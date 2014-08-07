@@ -1444,4 +1444,9 @@ public class Commands {
 
     callback.setToSuccess();
   }
+
+  public void nullemptystring(String line, DispatchCallback callback) {
+    // "nullemptystring foo" becomes "set nullemptystring foo"
+    set("set " + line, callback);
+  }
 }
