@@ -158,6 +158,14 @@ public class SqlLineTest {
     assertThat(n, equalTo(1));
   }
 
+  /** Tests '-e' option.
+   *
+   * <p>[HIVE-5765] - Beeline throws NPE when -e option is used. */
+  @Test public void testE() throws Exception {
+    final String out = runScript(Arrays.asList("-e", "!closeall"));
+    assertThat(out, out.startsWith("sqlline version"), is(true));
+  }
+
   @Test public void testError() throws IOException {
     final SqlLine line = new SqlLine(false, null, null);
     final ByteArrayOutputStream out = new ByteArrayOutputStream();
