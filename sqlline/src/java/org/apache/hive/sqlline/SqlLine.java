@@ -1025,6 +1025,11 @@ public class SqlLine {
     if (trimmed.length() == 0) {
       return false;
     }
+
+    if (!getOpts().isAllowMultiLineCommand()) {
+      return false;
+    }
+
     return !trimmed.endsWith(";");
   }
 
