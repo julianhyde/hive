@@ -246,6 +246,8 @@ public class SqlLine {
           null),
       new ReflectiveCommandHandler(this, new String[] {"call"},
           null),
+      new ReflectiveCommandHandler(this, new String[] {"nullemptystring"},
+          new Completer[] {new BooleanCompleter()}),
     };
   }
 

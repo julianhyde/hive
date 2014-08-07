@@ -25,7 +25,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import org.hamcrest.CoreMatchers;
+import org.hamcrest.Matcher;
 import org.junit.Test;
+import org.junit.internal.matchers.StringContains;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
@@ -167,16 +170,69 @@ public class SqlLineTest {
   }
 
   @Test public void testError() throws IOException {
+    checkInOut("!bad-command\n",
+        "sqlline> !bad-command\nUnknown command: bad-command\nsqlline> ",
+        SqlLine.Status.OTHER);
+  }
+
+  @Test public void testSet() throws IOException {
+    checkInOut("!set color red\n"
+            + "!set\n",
+        CoreMatchers.allOf(
+            new StringContains("sqlline> !set color red\n"),
+            new StringContains("\ncolor               false\n")),
+        SqlLine.Status.OK);
+  }
+
+  @Test public void testNullEmptyString() throws IOException {
+    checkInOut("!nullemptystring true\n"
+        + "!nullemptystring false\n"
+        + "!nullemptystring 1\n"
+        + "!nullemptystring yes\n"
+        + "!nullemptystring\n"
+        + "!nullemptystring \n"
+        + "!nullemptystring foo\n"
+        + "!set nullemptystring true\n"
+        + "!set nullemptystring foo\n",
+        "sqlline> !nullemptystring true\n"
+        + "sqlline> !nullemptystring false\n"
+        + "sqlline> !nullemptystring 1\n"
+        + "sqlline> !nullemptystring yes\n"
+        + "sqlline> !nullemptystring\n"
+        + "Usage: set <key> <value>\n"
+        + "sqlline> !nullemptystring \n"
+        + "Usage: set <key> <value>\n"
+        + "sqlline> !nullemptystring foo\n"
+        + "sqlline> !set nullemptystring true\n"
+        + "sqlline> !set nullemptystring foo\n"
+        + "sqlline> ",
+        SqlLine.Status.OK);
+
+    checkInOut("!set nullemptystring\n",
+        "sqlline> !set nullemptystring\n"
+        + "Usage: set <key> <value>\n"
+        + "sqlline> ",
+        SqlLine.Status.OTHER);
+  }
+
+  private void checkInOut(String in, String expectedOut,
+      SqlLine.Status expectedStatus) throws IOException {
+    checkInOut(in, equalTo(expectedOut), expectedStatus);
+  }
+
+  private void checkInOut(String in, Matcher<String> outputMatcher,
+      SqlLine.Status expectedStatus) throws IOException {
     final SqlLine line = new SqlLine(false, null, null);
     final ByteArrayOutputStream out = new ByteArrayOutputStream();
     final PrintStream ps = new PrintStream(out);
     line.setOutputStream(ps);
     line.setErrorStream(ps);
     final ByteArrayInputStream inputStream =
-        new ByteArrayInputStream("!bad-command\n".getBytes());
+        new ByteArrayInputStream(in.getBytes());
     SqlLine.Status status =
-        line.begin(Collections.<String>emptyList(), inputStream, false);
-    assertThat(status, equalTo(SqlLine.Status.OTHER));
+        line.begin(Arrays.asList("--silent"), inputStream, false);
+    assertThat(out.toString(), outputMatcher);
+    assertThat(status, equalTo(expectedStatus));
   }
 
   @Test public void testWrap() {
