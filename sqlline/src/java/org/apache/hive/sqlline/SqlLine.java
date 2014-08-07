@@ -683,7 +683,7 @@ public class SqlLine {
     for (int i = 0; i < args.size(); i++) {
       final String arg = args.get(i);
       if (arg.equals("--help") || arg.equals("-h")) {
-        usage();
+        // Return false here, so usage will be printed.
         return false;
       }
 

@@ -21,7 +21,9 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import org.junit.Test;
 
@@ -37,6 +39,22 @@ public class SqlLineTest {
    * Public constructor.
    */
   public SqlLineTest() {}
+
+  /**
+   * Runs a script.
+   *
+   * @throws java.lang.Exception Any exception while executing
+   * @return The stderr and stdout from running the script
+   */
+  private static String runScript(List<String> argList) throws Exception {
+    SqlLine beeLine = new SqlLine(false, null, null);
+    ByteArrayOutputStream os = new ByteArrayOutputStream();
+    PrintStream ps = new PrintStream(os);
+    beeLine.setOutputStream(ps);
+    beeLine.setErrorStream(ps);
+    beeLine.begin(argList, null, false);
+    return os.toString("UTF8");
+  }
 
   /**
    * Unit test for {@link org.apache.hive.sqlline.SqlLine#splitCompound(String)}.
@@ -124,6 +142,20 @@ public class SqlLineTest {
         new DispatchCallback());
     ps.flush();
     assertThat(out.toString().contains("License and Terms of Use"), is(true));
+  }
+
+  /** Tests that usage is printed exactly once. */
+  @Test public void testHelp() throws Exception {
+    final String out = runScript(Arrays.asList("--help"));
+    assertThat(out,
+        out.startsWith("Usage: java org.apache.hive.sqlline.SqlLine"),
+        is(true));
+    int n = 0;
+    int i = -1;
+    while ((i = out.indexOf("the JDBC URL", i + 1)) >= 0) {
+      ++n;
+    }
+    assertThat(n, equalTo(1));
   }
 
   @Test public void testError() throws IOException {
