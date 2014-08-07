@@ -383,20 +383,22 @@ public class SqlLine {
     }
   }
 
-    /** Returns the name of the application.
-     *
-     * <p>Default is built by substituting artifactId and version from
-     * pom.properties into a string, returning something like "sqlline
-     * version 1.6". Derived class may override. */
+  /** Returns the name of the application.
+   *
+   * <p>Default is built by substituting artifactId and version from
+   * pom.properties into a string, returning something like "sqlline
+   * version 1.6". Derived class may override. */
   protected String getApplicationTitle() {
-    InputStream inputStream =
-        getClass().getResourceAsStream(
-            "/META-INF/maven/sqlline/sqlline/pom.properties");
     Properties properties = new Properties();
     properties.put("artifactId", "sqlline");
     properties.put("version", "???");
+    InputStream inputStream =
+        getClass().getResourceAsStream(
+            "/META-INF/maven/org.apache.hive/hive-sqlline/pom.properties");
     try {
-      properties.load(inputStream);
+      if (inputStream != null) {
+        properties.load(inputStream);
+      }
     } catch (IOException e) {
       handleException(e);
     }
@@ -920,7 +922,7 @@ public class SqlLine {
     }
     if (inputStream != null) {
       // ### NOTE:  fix for sf.net bug 879425.
-      consoleReader = new ConsoleReader(inputStream, System.out);
+      consoleReader = new ConsoleReader(inputStream, outputStream);
     } else {
       consoleReader = new ConsoleReader();
     }
