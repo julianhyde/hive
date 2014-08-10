@@ -32,11 +32,14 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.hadoop.fs.Path;
+import org.apache.hive.sqlline.DispatchCallback;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hive.service.server.HiveServer2;
+import org.apache.hive.sqlline.SqlLine;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -46,13 +49,11 @@ import org.junit.Test;
  * TestBeeLineWithArgs - executes tests of the command-line arguments to BeeLine
  *
  */
-//public class TestBeeLineWithArgs extends TestCase {
 public class TestBeeLineWithArgs {
   // Default location of HiveServer2
   final private static String JDBC_URL = BeeLine.BEELINE_DEFAULT_JDBC_URL + "localhost:10000";
   private static final String tableName = "TestBeelineTable1";
   private static final String tableComment = "Test table comment";
-
 
   private static HiveServer2 hiveServer2;
 
@@ -64,6 +65,7 @@ public class TestBeeLineWithArgs {
     argList.add(jdbcUrl);
     return argList;
   }
+
   /**
    * Start up a local Hive Server 2 for these tests
    */
@@ -86,9 +88,7 @@ public class TestBeeLineWithArgs {
   }
 
   /**
-   * Create table for use by tests
-   * @throws ClassNotFoundException
-   * @throws SQLException
+   * Create table for use by tests.
    */
   private static void createTable() throws ClassNotFoundException, SQLException {
     Class.forName(BeeLine.BEELINE_DEFAULT_JDBC_DRIVER);
@@ -138,31 +138,31 @@ public class TestBeeLineWithArgs {
   }
 
   /**
-   * Execute a script with "beeline -f"
-   * @param scriptFileName The name of the script to execute
-   * @throws Any exception while executing
+   * Execute a script.
+   *
+   * @throws Throwable Any exception while executing
    * @return The stderr and stdout from running the script
    */
   private String testCommandLineScript(List<String> argList) throws Throwable {
-    BeeLine beeLine = new BeeLine();
+    SqlLine beeLine = new BeeLine();
     ByteArrayOutputStream os = new ByteArrayOutputStream();
-    PrintStream beelineOutputStream = new PrintStream(os);
-    beeLine.setOutputStream(beelineOutputStream);
-    beeLine.setErrorStream(beelineOutputStream);
-    String[] args = argList.toArray(new String[argList.size()]);
-    beeLine.begin(args, null);
+    PrintStream sqllineOutputStream = new PrintStream(os);
+    beeLine.setOutputStream(sqllineOutputStream);
+    beeLine.setErrorStream(sqllineOutputStream);
+    beeLine.begin(argList, null, false);
     String output = os.toString("UTF8");
 
     return output;
   }
 
   /**
-   * Attempt to execute a simple script file with the -f option to BeeLine
+   * Attempt to execute a simple script file with the -f option to SqlLine
    * Test for presence of an expected pattern
    * in the output (stdout or stderr), fail if not found
    * Print PASSED or FAILED
-   * @paramm testName Name of test to print
-   * @param expectedPattern Text to look for in command output/error
+   *
+   * @param testName Name of test to print
+   * @param expectedPattern Text to look for in command output
    * @param shouldMatch true if the pattern should be found, false if it should not
    * @throws Exception on command execution error
    */
@@ -193,7 +193,7 @@ public class TestBeeLineWithArgs {
   }
 
   /**
-   * Attempt to execute a simple script file with the -f option to BeeLine
+   * Attempt to execute a simple script file with the -f option to SqlLine
    * Test for presence of an expected pattern
    * in the output (stdout or stderr), fail if not found
    * Print PASSED or FAILED
@@ -264,7 +264,7 @@ public class TestBeeLineWithArgs {
   }
 
   /**
-   * Attempt to execute a simple script file with the -f option to BeeLine
+   * Attempt to execute a simple script file with the -f option to SqlLine
    * The first command should fail and the second command should not execute
    * Print PASSED or FAILED
    */
@@ -288,7 +288,11 @@ public class TestBeeLineWithArgs {
     final String SCRIPT_TEXT = "set hive.support.concurrency = false;\n" +
         "select null from " + tableName + " limit 1 ;\n";
     final String EXPECTED_PATTERN = "NULL";
-    testScriptFile(TEST_NAME, SCRIPT_TEXT, EXPECTED_PATTERN, true, getBaseArgs(JDBC_URL));
+    testScriptFile(TEST_NAME,
+        SCRIPT_TEXT,
+        EXPECTED_PATTERN,
+        true,
+        getBaseArgs(JDBC_URL));
   }
 
   /**
@@ -352,7 +356,7 @@ public class TestBeeLineWithArgs {
   }
 
   /**
-   * Attempt to execute a missing script file with the -f option to BeeLine
+   * Attempt to execute a missing script file with the -f option to SqlLine
    * Print PASSED or FAILED
    */
   @Test
@@ -364,7 +368,7 @@ public class TestBeeLineWithArgs {
     System.out.println(">>> STARTED " + TEST_NAME);
 
     // Create and delete a temp file
-    File scriptFile = File.createTempFile("beelinenegative", "temp");
+    File scriptFile = File.createTempFile("sqllinenegative", "temp");
     scriptFile.delete();
 
     List<String> argList = getBaseArgs(JDBC_URL);
@@ -372,7 +376,7 @@ public class TestBeeLineWithArgs {
     argList.add(scriptFile.getAbsolutePath());
 
     try {
-        String output = testCommandLineScript(argList);
+      String output = testCommandLineScript(argList);
       long elapsedTime = (System.currentTimeMillis() - startTime)/1000;
       String time = "(" + elapsedTime + "s)";
       if (output.contains(EXPECTED_PATTERN)) {
@@ -394,24 +398,37 @@ public class TestBeeLineWithArgs {
    */
   @Test
   public void testNPE() throws UnsupportedEncodingException {
-    BeeLine beeLine = new BeeLine();
+    SqlLine sqlLine = new BeeLine();
 
     ByteArrayOutputStream os = new ByteArrayOutputStream();
-    PrintStream beelineOutputStream = new PrintStream(os);
-    beeLine.setOutputStream(beelineOutputStream);
-    beeLine.setErrorStream(beelineOutputStream);
+    PrintStream sqllineOutputStream = new PrintStream(os);
+    sqlLine.setOutputStream(sqllineOutputStream);
+    sqlLine.setErrorStream(sqllineOutputStream);
 
-    beeLine.runCommands( new String[] {"!typeinfo"} );
+    final DispatchCallback callback = new DispatchCallback();
+    sqlLine.runCommands(Arrays.asList("!typeinfo"), callback);
     String output = os.toString("UTF8");
     Assert.assertFalse( output.contains("java.lang.NullPointerException") );
     Assert.assertTrue( output.contains("No current connection") );
 
-    beeLine.runCommands( new String[] {"!nativesql"} );
+    sqlLine.runCommands(Arrays.asList("!nativesql"), callback);
     output = os.toString("UTF8");
-    Assert.assertFalse( output.contains("java.lang.NullPointerException") );
+    Assert.assertFalse(output.contains("java.lang.NullPointerException"));
     Assert.assertTrue( output.contains("No current connection") );
+    System.out.println(">>> PASSED " + "testNPE");
+  }
 
-    System.out.println(">>> PASSED " + "testNPE" );
+  /**
+   * Checks that BeeLine uses its own resources, not SqlLine's.
+   */
+  @Test
+  public void testResource() throws Throwable {
+    String output = testCommandLineScript(Arrays.asList("--help"));
+    // BeeLine's usage string refers to --hiveconf; SqlLine's does not.
+    Assert.assertTrue(output,
+        output.contains(
+            "--hiveconf property=value       Use value for given property"));
+    System.out.println(">>> PASSED " + "testResource");
   }
 
   @Test
@@ -424,10 +441,10 @@ public class TestBeeLineWithArgs {
   }
 
   @Test
-  public void testEmbeddedBeelineConnection() throws Throwable{
+  public void testEmbeddedBeelineConnection() throws Throwable {
     String embeddedJdbcURL = BeeLine.BEELINE_DEFAULT_JDBC_URL+"/Default";
     List<String> argList = getBaseArgs(embeddedJdbcURL);
-	  argList.add("--hivevar");
+    argList.add("--hivevar");
     argList.add("DUMMY_TBL=embedded_table");
     final String TEST_NAME = "testEmbeddedBeelineConnection";
     // Set to non-zk lock manager to avoid trying to connect to zookeeper
