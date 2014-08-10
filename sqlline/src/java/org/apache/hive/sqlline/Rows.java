@@ -52,9 +52,7 @@ abstract class Rows implements Iterator<Rows.Row> {
   }
 
   @Override
-  public Row next() {
-    return null;
-  }
+  public abstract Row next();
 
   public void remove() {
     throw new UnsupportedOperationException();
@@ -175,7 +173,7 @@ abstract class Rows implements Iterator<Rows.Row> {
               ? rs.getString(i + 1)
               : String.valueOf(rs.getObject(i + 1));
         }
-        if (value == null) {
+        if (value == null || value.equals("null") && rs.wasNull()) {
           value = nullStr;
         }
         values[i] = value;

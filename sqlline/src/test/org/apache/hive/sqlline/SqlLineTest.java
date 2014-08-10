@@ -23,6 +23,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -30,9 +31,12 @@ import java.util.List;
 
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.Matcher;
+
+import org.junit.Assert;
 import org.junit.Test;
 import org.junit.internal.matchers.StringContains;
 
+import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertThat;
@@ -41,25 +45,184 @@ import static org.junit.Assert.assertThat;
  * Test cases for SqlLine.
  */
 public class SqlLineTest {
+  private static final String JDBC_URL = "jdbc:hsqldb:mem:x";
+  private static final String HSQLDB_JDBC_DRIVER = "org.hsqldb.jdbcDriver";
+
   /**
    * Public constructor.
    */
   public SqlLineTest() {}
 
+  private List<String> getBaseArgs(String jdbcUrl) {
+    return new ArrayList<String>(
+        Arrays.asList("--silent=true", "-d", HSQLDB_JDBC_DRIVER,
+            "-u", jdbcUrl));
+  }
+
   /**
-   * Runs a script.
-   *
-   * @throws java.lang.Exception Any exception while executing
-   * @return The stderr and stdout from running the script
+   * Attempts to run with a JDBC driver class that does not exist.
    */
-  private static String runScript(List<String> argList) throws Exception {
-    SqlLine beeLine = new SqlLine(false, null, null);
+  @Test
+  public void testBadJdbcDriver() throws Exception {
+    assertThat(
+        checkScriptFile("show databases;\n",
+            Arrays.asList("-d", "com.example.bad.Driver", "-u", JDBC_URL)),
+        contains("0: jdbc:hsqldb:mem:x> show databases;\n"
+            + "java.lang.ClassNotFoundException: com.example.bad.Driver\n"));
+  }
+
+  /**
+   * Attempts to run with a JDBC URL for which there is no registered driver.
+   */
+  @Test
+  public void testNoJdbcDriver() throws Exception {
+    assertThat(
+        checkScriptFile("show databases;\n",
+            Arrays.asList("-d", HSQLDB_JDBC_DRIVER, "-u", "notJdbc:fooBase:")),
+        contains("0: notJdbc:fooBase:> show databases;\n"
+            + "No known driver to handle \"notJdbc:fooBase:\". Searching for known drivers...\n"));
+  }
+
+  /**
+   * Attempt to execute a simple script file with the -f option to SqlLine.
+   * Test for presence of an expected pattern
+   * in the output (stdout or stderr), fail if not found.
+   */
+  @Test
+  public void testPositiveScriptFile() throws Throwable {
+    final String substring = " default ";
+    assertThat(checkScriptFile("values 1;\n", getBaseArgs(JDBC_URL)),
+        contains("0: jdbc:hsqldb:mem:x> values 1;\n"
+            + "+-------------+\n"
+            + "|     C1      |\n"
+            + "+-------------+\n"
+            + "| 1           |\n"
+            + "+-------------+\n"
+            + "0: jdbc:hsqldb:mem:x> "));
+  }
+
+  /** Until we upgrade junit and can use CoreMatchers.contains. */
+  private static StringContains contains(String substring) {
+    return new StringContains(substring);
+  }
+
+  /**
+   * Attempts to execute a simple script file with the -f option to SqlLine.
+   * The first command should fail and the second command should not execute.
+   */
+  @Test
+  public void testBreakOnErrorScriptFile() throws Throwable {
+    assertThat(
+        checkScriptFile("select * from abcdefg01;\nshow databases;\n",
+            getBaseArgs(JDBC_URL)),
+        CoreMatchers.not(contains(" default ")));
+  }
+
+  /**
+   * Select null from table; checks how null is printed
+   */
+  @Test
+  public void testNullDefault() throws Throwable {
+    List<String> argList = getBaseArgs(JDBC_URL);
+    assertThat(
+        checkScriptFile(
+            "select null from (values 1);\n",
+            argList),
+        contains(" NULL "));
+  }
+
+  /**
+   * Selects null from table; checks that default null is printed differently.
+   */
+  @Test
+  public void testNullNonEmpty() throws Throwable {
+    assertThat(
+        checkScriptFile(
+            "!set nullemptystring false\n"
+            + "select null as n from (values 1);\n",
+            getBaseArgs(JDBC_URL)),
+        contains("NULL"));
+  }
+
+  @Test
+  public void testGetVariableValue() throws Throwable {
+    assertThat(
+        checkScriptFile("set env:TERM;", getBaseArgs(JDBC_URL)),
+        contains("env:TERM"));
+  }
+
+  /**
+   * Selects null from table; check if setting null to empty string works.
+   * Original beeline/sqlline used to print nulls as empty strings.
+   */
+  @Test
+  public void testNullEmpty() throws Throwable {
+    List<String> argList = getBaseArgs(JDBC_URL);
+    argList.add("--outputformat=csv");
+    assertThat(
+        checkScriptFile(
+            "!set nullemptystring true\n"
+            + "select 'abc',null,'def' from (values 1);\n",
+            argList),
+        contains("'abc','','def'"));
+  }
+
+  /**
+   * Selects null from table;
+   * check if setting null to empty string works;
+   * using sqlline cmd line argument.
+   * Original sqlline used to print nulls as empty strings.
+   */
+  @Test
+  public void testNullEmptyCmdArg() throws Exception {
+    List<String> argList = getBaseArgs(JDBC_URL);
+    argList.add("--nullemptystring=true");
+    argList.add("--outputformat=csv");
+    assertThat(
+        checkScriptFile("select 'abc',null,'def' from (values 1);\n", argList),
+        contains("'abc','','def'"));
+  }
+
+  /**
+   * Attempt to execute a missing script file with the -f option to SqlLine
+   */
+  @Test
+  public void testNegativeScriptFile() throws Exception {
+    // Create and delete a temp file
+    File scriptFile = File.createTempFile("sqllinenegative", ".sql");
+    scriptFile.delete();
+
+    List<String> argList = getBaseArgs(JDBC_URL);
+    argList.add("-f");
+    argList.add(scriptFile.getAbsolutePath());
+
+    assertThat(checkCommandLineScript(argList),
+        contains("FileNotFoundException"));
+  }
+
+  /**
+   * HIVE-4566
+   * @throws java.io.UnsupportedEncodingException
+   */
+  @Test
+  public void testNPE() throws UnsupportedEncodingException {
+    SqlLine sqlLine = new SqlLine(false, null, null);
+
     ByteArrayOutputStream os = new ByteArrayOutputStream();
-    PrintStream ps = new PrintStream(os);
-    beeLine.setOutputStream(ps);
-    beeLine.setErrorStream(ps);
-    beeLine.begin(argList, null, false);
-    return os.toString("UTF8");
+    PrintStream sqllineOutputStream = new PrintStream(os);
+    sqlLine.setOutputStream(sqllineOutputStream);
+    sqlLine.setErrorStream(sqllineOutputStream);
+
+    final DispatchCallback callback = new DispatchCallback();
+    sqlLine.runCommands(Arrays.asList("!typeinfo"), callback);
+    String output = os.toString("UTF8");
+    Assert.assertFalse(output.contains("java.lang.NullPointerException"));
+    Assert.assertTrue(output.contains("No current connection"));
+
+    sqlLine.runCommands(Arrays.asList("!nativesql"), callback);
+    output = os.toString("UTF8");
+    Assert.assertFalse(output.contains("java.lang.NullPointerException"));
+    Assert.assertTrue(output.contains("No current connection"));
   }
 
   /**
@@ -152,7 +315,7 @@ public class SqlLineTest {
 
   /** Tests that usage is printed exactly once. */
   @Test public void testHelp() throws Exception {
-    final String out = runScript(Arrays.asList("--help"));
+    final String out = checkCommandLineScript(Arrays.asList("--help"));
     assertThat(out,
         out.startsWith("Usage: java org.apache.hive.sqlline.SqlLine"),
         is(true));
@@ -168,7 +331,7 @@ public class SqlLineTest {
    *
    * <p>[HIVE-5765] - Beeline throws NPE when -e option is used. */
   @Test public void testE() throws Exception {
-    final String out = runScript(Arrays.asList("-e", "!closeall"));
+    final String out = checkCommandLineScript(Arrays.asList("-e", "!closeall"));
     assertThat(out, out.startsWith("sqlline version"), is(true));
   }
 
@@ -181,9 +344,9 @@ public class SqlLineTest {
   @Test public void testSet() throws IOException {
     checkInOut("!set color red\n"
             + "!set\n",
-        CoreMatchers.allOf(
-            new StringContains("sqlline> !set color red\n"),
-            new StringContains("\ncolor               false\n")),
+        allOf(
+            contains("sqlline> !set color red\n"),
+            contains("\ncolor               false\n")),
         SqlLine.Status.OK);
   }
 
