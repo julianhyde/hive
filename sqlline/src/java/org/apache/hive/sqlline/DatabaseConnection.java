@@ -45,9 +45,20 @@ class DatabaseConnection {
   Quoting quoting;
   private final String driver;
   private final String url;
+
   private final String username;
   private final String password;
+
+  /** Extra properties for the connection. At connect time, sqlline constructs a
+   *  {@link Properties} object of:
+   *  <ul>
+   *  <li>info,
+   *  <li>("user", username) if username is set, and
+   *  <li>("password", password) if password is set
+   *  </ul>
+   *  and passes it to {@link Driver#connect(String, java.util.Properties)}. */
   private final LinkedHashMap<String, String> info;
+
   private Schema schema = null;
   private Completer sqlCompleter = null;
 
