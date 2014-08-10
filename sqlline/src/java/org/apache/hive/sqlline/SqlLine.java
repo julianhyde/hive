@@ -929,8 +929,11 @@ public class SqlLine {
       consoleReader = new ConsoleReader();
     }
 
-    consoleReader.addCompleter(new SqlLineCompleter(this));
-    consoleReader.setHistory(fileHistory);
+    // If reading from script, no need to load history and no need of completer.
+    if (!(inputStream instanceof FileInputStream)) {
+      consoleReader.addCompleter(new SqlLineCompleter(this));
+      consoleReader.setHistory(fileHistory);
+    }
     consoleReader.setHandleUserInterrupt(true); // CTRL-C handling
     consoleReader.setExpandEvents(false);
 

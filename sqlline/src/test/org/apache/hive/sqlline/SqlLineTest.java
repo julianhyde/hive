@@ -19,8 +19,11 @@ package org.apache.hive.sqlline;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -254,6 +257,53 @@ public class SqlLineTest {
     assertThat(SqlLine.center("abc", 6), equalTo(" abc  "));
     assertThat(SqlLine.center("abc", 7), equalTo("  abc  "));
     assertThat(SqlLine.center("abc", 8), equalTo("  abc   "));
+  }
+
+  /**
+   * Executes a script.
+   */
+  private String checkCommandLineScript(List<String> argList) throws Exception {
+    SqlLine sqlLine = new SqlLine(false, null, null);
+    ByteArrayOutputStream os = new ByteArrayOutputStream();
+    PrintStream ps = new PrintStream(os);
+    sqlLine.setOutputStream(ps);
+    sqlLine.setErrorStream(ps);
+    sqlLine.begin(argList, null, false);
+    return os.toString("UTF8");
+  }
+
+  /**
+   * Attempts to execute a simple script file with the -f option to SqlLine.
+   *
+   * <p>Tests for presence of an expected pattern
+   * in the output (stdout or stderr), fails if not found.
+   *
+   * @throws Exception on command execution error
+   */
+  private String checkScriptFile(String scriptText, List<String> argList)
+      throws Exception {
+    // Put the script content in a temp file
+    File scriptFile = File.createTempFile("sqllinetest", ".sql");
+    scriptFile.deleteOnExit();
+    PrintStream os = new PrintStream(new FileOutputStream(scriptFile));
+    os.print(scriptText);
+    os.close();
+
+    final ArrayList<String> argList2 = new ArrayList<String>(argList);
+    argList2.add("-f");
+    argList2.add(scriptFile.getAbsolutePath());
+
+    String output = checkCommandLineScript(argList2);
+    scriptFile.delete();
+    return output;
+  }
+
+  /** Tabs should be treated as whitespace in script files; they should not
+   * trigger completion. */
+  @Test public void testTab() throws Exception {
+    assertThat(
+        checkScriptFile("!set color\t red\n", Arrays.<String>asList()),
+        equalTo("sqlline version ???\nsqlline> !set color red\nsqlline> "));
   }
 }
 
