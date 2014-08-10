@@ -158,6 +158,13 @@ public class BeeLine extends SqlLine {
   protected int customArg(List<String> args, int i) {
     final String arg = args.get(i);
 
+    // Authorization type
+    if (arg.equals("-a")) {
+      String authType = args.get(i + 1);
+      getOpts().setAuthType(authType);
+      return i + 2;
+    }
+
     // Parse hive variables
     if (arg.equals(HIVE_VAR_ARG_PREFIX)) {
       List<String> parts = split(args.get(i + 1), "=");
@@ -193,10 +200,19 @@ public class BeeLine extends SqlLine {
    */
   @Override
   public String fixUpUrl(String url, Map<String, String> info) {
+    String auth = info.get("auth");
+    if (auth == null) {
+      auth = getOpts().getAuthType();
+      if (auth != null) {
+        info.put("auth", auth);
+      }
+    }
+
     final Map<String, String> hiveVars = getOpts().getHiveVariables();
     for (Map.Entry<String, String> var : hiveVars.entrySet()) {
       info.put(HIVE_VAR_PREFIX + var.getKey(), var.getValue());
     }
+
     final Map<String, String> hiveConfVars =
         getOpts().getHiveConfVariables();
     for (Map.Entry<String, String> var : hiveConfVars.entrySet()) {

@@ -27,6 +27,7 @@ import java.util.Properties;
 class BeeLineOpts extends SqlLineOpts {
   private Map<String, String> hiveVariables = new HashMap<String, String>();
   private Map<String, String> hiveConfVariables = new HashMap<String, String>();
+  private String authType;
 
   public BeeLineOpts(BeeLine beeLine) {
     super(beeLine,
@@ -54,5 +55,13 @@ class BeeLineOpts extends SqlLineOpts {
 
   public void setHiveConfVariables(Map<String, String> hiveConfVariables) {
     this.hiveConfVariables = hiveConfVariables;
+  }
+
+  public String getAuthType() {
+    return authType;
+  }
+
+  public void setAuthType(String authType) {
+    this.authType = authType;
   }
 }

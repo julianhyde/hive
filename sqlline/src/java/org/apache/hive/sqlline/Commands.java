@@ -1337,8 +1337,8 @@ public class Commands {
     } catch (Exception e) {
       sqlLine.handleException(e);
     }
-    sqlLine.output(sqlLine.loc("record-closed", sqlLine.getRecordOutputFile()));
     sqlLine.setRecordOutputFile(null);
+    sqlLine.output(sqlLine.loc("record-closed", sqlLine.getRecordOutputFile()));
     callback.setToSuccess();
   }
 
@@ -1360,9 +1360,9 @@ public class Commands {
     }
 
     try {
-      sqlLine.setRecordOutputFile(new OutputFile(parts.get(1)));
-      sqlLine.output(
-          sqlLine.loc("record-started", sqlLine.getRecordOutputFile()));
+      final OutputFile recordOutput = new OutputFile(parts.get(1));
+      sqlLine.output(sqlLine.loc("record-started", recordOutput));
+      sqlLine.setRecordOutputFile(recordOutput);
       callback.setToSuccess();
     } catch (Exception e) {
       callback.setToFailure();
