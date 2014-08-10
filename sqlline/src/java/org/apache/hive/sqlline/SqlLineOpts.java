@@ -125,7 +125,7 @@ public class SqlLineOpts implements Completer {
     try {
       return new StringsCompleter(propertyNames())
           .complete(buf, pos, candidates);
-    } catch (Throwable t) {
+    } catch (Exception t) {
       return -1;
     }
   }
