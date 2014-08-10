@@ -26,6 +26,7 @@ import java.util.Properties;
 /** Configuration options for BeeLine. */
 class BeeLineOpts extends SqlLineOpts {
   private Map<String, String> hiveVariables = new HashMap<String, String>();
+  private Map<String, String> hiveConfVariables = new HashMap<String, String>();
 
   public BeeLineOpts(BeeLine beeLine) {
     super(beeLine,
@@ -45,5 +46,13 @@ class BeeLineOpts extends SqlLineOpts {
 
   public void setHiveVariables(Map<String, String> hiveVariables) {
     this.hiveVariables = hiveVariables;
+  }
+
+  public Map<String, String> getHiveConfVariables() {
+    return hiveConfVariables;
+  }
+
+  public void setHiveConfVariables(Map<String, String> hiveConfVariables) {
+    this.hiveConfVariables = hiveConfVariables;
   }
 }

@@ -57,9 +57,16 @@ public class BeeLine extends SqlLine {
   /** Prefix for command-line arguments that specify Hive variables. */
   private static final String HIVE_VAR_ARG_PREFIX = "--hivevar";
 
+  /** Prefix for command-line arguments that specify Hive configuration. */
+  private static final String HIVE_CONF_ARG_PREFIX = "--hiveconf";
+
   /** Prefix to the name of properties (passed to getConnection) that specify
    * Hive variables. */
   private static final String HIVE_VAR_PREFIX = "hivevar:";
+
+  /** Prefix to the name of properties (passed to getConnection) that specify
+   * Hive configuration variables. */
+  private static final String HIVE_CONF_PREFIX = "hiveconf:";
 
   /** Combined resource bundle that first looks in BeeLine.properties, then in
    * SqlLine.properties. */
@@ -161,6 +168,15 @@ public class BeeLine extends SqlLine {
       return i + 2; // 2 args consumed
     }
 
+    if (arg.equals(HIVE_CONF_ARG_PREFIX)) {
+      List<String> parts = split(args.get(i + 1), "=");
+      if (parts.size() != 2) {
+        return -1;
+      }
+      getOpts().getHiveConfVariables().put(parts.get(0), parts.get(1));
+      return i + 2; // 2 args consumed
+    }
+
     return i; // no args consumed
   }
 
@@ -180,6 +196,11 @@ public class BeeLine extends SqlLine {
     final Map<String, String> hiveVars = getOpts().getHiveVariables();
     for (Map.Entry<String, String> var : hiveVars.entrySet()) {
       info.put(HIVE_VAR_PREFIX + var.getKey(), var.getValue());
+    }
+    final Map<String, String> hiveConfVars =
+        getOpts().getHiveConfVariables();
+    for (Map.Entry<String, String> var : hiveConfVars.entrySet()) {
+      info.put(HIVE_CONF_PREFIX + var.getKey(), var.getValue());
     }
     return url;
   }
