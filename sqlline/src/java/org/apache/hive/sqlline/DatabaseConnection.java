@@ -225,7 +225,9 @@ class DatabaseConnection {
     if (connection != null) {
       return connection;
     }
-    connect();
+    if (!connect()) {
+      throw new RuntimeException("Connection failed");
+    }
     return connection;
   }
 
