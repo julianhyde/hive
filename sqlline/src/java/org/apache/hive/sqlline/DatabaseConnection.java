@@ -24,8 +24,10 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
@@ -45,16 +47,19 @@ class DatabaseConnection {
   private final String url;
   private final String username;
   private final String password;
+  private final LinkedHashMap<String, String> info;
   private Schema schema = null;
   private Completer sqlCompleter = null;
 
   public DatabaseConnection(SqlLine sqlLine, String driver, String url,
-      String username, String password) throws SQLException {
+      Map<String, String> info, String username, String password)
+      throws SQLException {
     this.sqlLine = sqlLine;
     this.driver = driver;
     this.url = url;
     this.username = username;
     this.password = password;
+    this.info = new LinkedHashMap<String, String>(info);
   }
 
   @Override
@@ -168,6 +173,9 @@ class DatabaseConnection {
     final Properties info = new Properties();
     info.put("user", username);
     info.put("password", password);
+    for (Map.Entry<String, String> entry : this.info.entrySet()) {
+      info.put(entry.getKey(), entry.getValue());
+    }
     connection = theDriver.connect(url, info);
     meta = connection.getMetaData();
 

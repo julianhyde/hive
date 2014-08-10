@@ -2089,9 +2089,12 @@ public class SqlLine {
    * made.
    *
    * <p>This is an opportunity to append connection-specific variables to the
-   * URL. The default implementation returns the URL unchanged.</p>
+   * URL, and to add properties to the {@code info} map.
+   *
+   * <p>The default implementation does not modify the map, and returns the URL
+   * unchanged.</p>
    */
-  public String fixUpUrl(String url) {
+  public String fixUpUrl(String url, Map<String, String> info) {
     return url;
   }
 
