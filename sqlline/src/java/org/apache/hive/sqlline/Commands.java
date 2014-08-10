@@ -34,6 +34,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -1082,8 +1083,10 @@ public class Commands {
     }
 
     try {
+      final Map<String, String> info = new LinkedHashMap<String, String>();
+      final String url2 = sqlLine.fixUpUrl(url, info);
       sqlLine.getDatabaseConnections().setConnection(
-          new DatabaseConnection(sqlLine, driver, sqlLine.fixUpUrl(url),
+          new DatabaseConnection(sqlLine, driver, url2, info,
               username, password));
       sqlLine.getDatabaseConnection().getConnection();
 

@@ -54,7 +54,12 @@ public class BeeLine extends SqlLine {
           "org.apache.hive.jdbc.HiveDriver",
           "com.mysql.jdbc.DatabaseMetaData"));
 
-  private static final String HIVE_VAR_PREFIX = "--hivevar";
+  /** Prefix for command-line arguments that specify Hive variables. */
+  private static final String HIVE_VAR_ARG_PREFIX = "--hivevar";
+
+  /** Prefix to the name of properties (passed to getConnection) that specify
+   * Hive variables. */
+  private static final String HIVE_VAR_PREFIX = "hivevar:";
 
   /** Combined resource bundle that first looks in BeeLine.properties, then in
    * SqlLine.properties. */
@@ -147,7 +152,7 @@ public class BeeLine extends SqlLine {
     final String arg = args.get(i);
 
     // Parse hive variables
-    if (arg.equals(HIVE_VAR_PREFIX)) {
+    if (arg.equals(HIVE_VAR_ARG_PREFIX)) {
       List<String> parts = split(args.get(i + 1), "=");
       if (parts.size() != 2) {
         return -1;
@@ -171,28 +176,12 @@ public class BeeLine extends SqlLine {
    * url (after #). They will be set later on the session on the server side.
    */
   @Override
-  public String fixUpUrl(String url) {
-    final StringBuilder sb = new StringBuilder(url);
-    Map<String, String> hiveVars = getOpts().getHiveVariables();
-    if (hiveVars.size() > 0) {
-      if (!url.contains("#")) {
-        sb.append("#");
-      } else {
-        sb.append(";");
-      }
-      Set<Map.Entry<String, String>> vars = hiveVars.entrySet();
-      Iterator<Map.Entry<String, String>> it = vars.iterator();
-      while (it.hasNext()) {
-        Map.Entry<String, String> var = it.next();
-        sb.append(var.getKey());
-        sb.append("=");
-        sb.append(var.getValue());
-        if (it.hasNext()) {
-          sb.append(";");
-        }
-      }
+  public String fixUpUrl(String url, Map<String, String> info) {
+    final Map<String, String> hiveVars = getOpts().getHiveVariables();
+    for (Map.Entry<String, String> var : hiveVars.entrySet()) {
+      info.put(HIVE_VAR_PREFIX + var.getKey(), var.getValue());
     }
-    return sb.toString();
+    return url;
   }
 
   @Override
