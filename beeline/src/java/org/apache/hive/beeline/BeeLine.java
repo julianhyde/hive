@@ -178,7 +178,7 @@ public class BeeLine extends SqlLine {
       if (!url.contains("#")) {
         sb.append("#");
       } else {
-        sb.append("&");
+        sb.append(";");
       }
       Set<Map.Entry<String, String>> vars = hiveVars.entrySet();
       Iterator<Map.Entry<String, String>> it = vars.iterator();
@@ -188,7 +188,7 @@ public class BeeLine extends SqlLine {
         sb.append("=");
         sb.append(var.getValue());
         if (it.hasNext()) {
-          sb.append("&");
+          sb.append(";");
         }
       }
     }
