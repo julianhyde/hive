@@ -735,8 +735,10 @@ public class SqlLine {
         commands.add(args.get(++i));
       } else if (arg.equals("-f")) {
         getOpts().setScriptFile(args.get(++i));
+      } else if (arg.equals("-r")) {
+        files.add(args.get(++i));
       } else {
-        files.add(arg);
+        return error(loc("unrecognized-argument", arg));
       }
     }
 
