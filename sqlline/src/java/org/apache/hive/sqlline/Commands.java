@@ -18,6 +18,7 @@
 package org.apache.hive.sqlline;
 
 import java.io.BufferedReader;
+import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
@@ -981,7 +982,13 @@ public class Commands {
 
     for (int i = 1; i < parts.size(); i++) {
       Properties props = new Properties();
-      props.load(new FileInputStream(parts.get(i)));
+      InputStream stream = new FileInputStream(parts.get(i));
+      try {
+        props.load(stream);
+      } finally {
+        closeStream(stream);
+      }
+
       connect(props, callback);
       if (callback.isSuccess()) {
         successes++;
@@ -992,6 +999,16 @@ public class Commands {
       callback.setToFailure();
     } else {
       callback.setToSuccess();
+    }
+  }
+
+  private static void closeStream(Closeable stream) {
+    try {
+      if (stream != null) {
+        stream.close();
+      }
+    } catch (IOException e) {
+      // ignore
     }
   }
 
