@@ -557,6 +557,57 @@ public class SqlLineTest {
         checkScriptFile("!set color\t red\n", Arrays.<String>asList()),
         equalTo("sqlline version ???\nsqlline> !set color red\nsqlline> "));
   }
+
+  /** Output with header. */
+  @Test public void testHeader() throws Exception {
+    final List<String> argList = getBaseArgs(JDBC_URL);
+    assertThat(
+        checkScriptFile(
+            "!set showheader true\n"
+            + "!set headerinterval 2\n"
+            + "select * from (values (1, 'a'), (2, 'b'), (3, 'c'))\n"
+            + "  as t(x, y);\n",
+            argList),
+        equalTo(
+            "0: jdbc:hsqldb:mem:x> !set showheader true\n"
+            + "0: jdbc:hsqldb:mem:x> !set headerinterval 2\n"
+            + "0: jdbc:hsqldb:mem:x> select * from (values (1, 'a'), (2, 'b'), (3, 'c'))\n"
+            + ". . . . . . . . . . >   as t(x, y);\n"
+            + "+-------------+---+\n"
+            + "|      X      | Y |\n"
+            + "+-------------+---+\n"
+            + "| 1           | a |\n"
+            + "| 2           | b |\n"
+            + "+-------------+---+\n"
+            + "|      X      | Y |\n"
+            + "+-------------+---+\n"
+            + "| 3           | c |\n"
+            + "+-------------+---+\n"
+            + "0: jdbc:hsqldb:mem:x> "));
+  }
+
+  /** Output with headers disabled. */
+  @Test public void testNoHeader() throws Exception {
+    final List<String> argList = getBaseArgs(JDBC_URL);
+    assertThat(
+        checkScriptFile(
+            "!set showheader false\n"
+            + "!set headerinterval 2\n"
+            + "select * from (values (1, 'a'), (2, 'b'), (3, 'c'))\n"
+            + "  as t(x, y);\n",
+            argList),
+        equalTo(
+            "0: jdbc:hsqldb:mem:x> !set showheader false\n"
+            + "0: jdbc:hsqldb:mem:x> !set headerinterval 2\n"
+            + "0: jdbc:hsqldb:mem:x> select * from (values (1, 'a'), (2, 'b'), (3, 'c'))\n"
+            + ". . . . . . . . . . >   as t(x, y);\n"
+            + "+-------------+---+\n"
+            + "| 1           | a |\n"
+            + "| 2           | b |\n"
+            + "| 3           | c |\n"
+            + "+-------------+---+\n"
+            + "0: jdbc:hsqldb:mem:x> "));
+  }
 }
 
 // End SqlLineTest.java

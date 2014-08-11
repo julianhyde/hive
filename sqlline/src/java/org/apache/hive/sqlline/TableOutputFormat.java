@@ -57,12 +57,15 @@ class TableOutputFormat implements OutputFormat {
             .truncate(headerCols.getVisibleLength());
       }
 
-      if (index == 0
-          || (sqlLine.getOpts().getHeaderInterval() > 0
-              && index % sqlLine.getOpts().getHeaderInterval() == 0
-              && sqlLine.getOpts().getShowHeader())) {
-        printRow(header, true);
-        printRow(headerCols, false);
+      if (sqlLine.getOpts().getShowHeader()) {
+        if (index == 0
+            || (index - 1 > 0
+            && (index - 1) % sqlLine.getOpts().getHeaderInterval() == 0)) {
+          printRow(header, true);
+          printRow(headerCols, false);
+          printRow(header, true);
+        }
+      } else if (index == 0) {
         printRow(header, true);
       }
 
@@ -73,7 +76,7 @@ class TableOutputFormat implements OutputFormat {
       index++;
     }
 
-    if (header != null && sqlLine.getOpts().getShowHeader()) {
+    if (header != null) {
       printRow(header, true);
     }
 
