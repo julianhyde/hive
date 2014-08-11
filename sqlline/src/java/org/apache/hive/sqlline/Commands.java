@@ -936,16 +936,18 @@ public class Commands {
    * Close the current connection.
    */
   public void close(String line, DispatchCallback callback) {
-    if (sqlLine.getDatabaseConnection() == null) {
+    final DatabaseConnection databaseConnection =
+        sqlLine.getDatabaseConnection();
+    if (databaseConnection == null) {
       callback.setToFailure();
       return;
     }
 
     try {
-      final Connection connection =
-          sqlLine.getDatabaseConnection().getConnection();
+      final Connection connection = databaseConnection.getConnection();
       if (connection != null && !connection.isClosed()) {
-        sqlLine.info(sqlLine.loc("closing", connection.getClass().getName()));
+        int index = sqlLine.getDatabaseConnections().getIndex();
+        sqlLine.info(sqlLine.loc("closing", index, databaseConnection));
         connection.close();
       } else {
         sqlLine.info(sqlLine.loc("already-closed"));
