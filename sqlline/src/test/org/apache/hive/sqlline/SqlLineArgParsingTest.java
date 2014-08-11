@@ -29,9 +29,9 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.junit.Assert.assertThat;
 
 /**
- * Unit test for Beeline arg parser.
+ * Unit test for how SqlLine parses command-line arguments.
  */
-public class TestBeelineArgParsing {
+public class SqlLineArgParsingTest {
   @Test
   public void testSimpleArgs() throws Exception {
     ArgCapturingSqlLine bl = new ArgCapturingSqlLine();
@@ -65,7 +65,7 @@ public class TestBeelineArgParsing {
   }
 
   @Test
-  public void testBeelineOpts() throws Exception {
+  public void testSqlLineOpts() throws Exception {
     ArgCapturingSqlLine bl = new ArgCapturingSqlLine();
     List<String> args = Arrays.asList("-u", "url", "-n", "name",
       "-p", "password", "-d", "driver", "--autoCommit=true", "--verbose");
