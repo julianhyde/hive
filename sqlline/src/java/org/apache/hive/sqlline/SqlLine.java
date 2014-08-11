@@ -1113,7 +1113,8 @@ public class SqlLine {
   boolean isComment(String line) {
     // SQL92 comment prefix is "--"
     // sqlline also supports shell-style "#" prefix
-    return line.startsWith("#") || line.startsWith("--");
+    String lineTrimmed = line.trim();
+    return lineTrimmed.startsWith("#") || lineTrimmed.startsWith("--");
   }
 
   /**
