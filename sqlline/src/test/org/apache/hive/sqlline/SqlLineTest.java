@@ -265,6 +265,31 @@ public class SqlLineTest {
   }
 
   /**
+   * Tests various kinds of comments: '--' and '#', with and without preceding
+   * spaces.
+   */
+  @Test
+  public void testComments() throws Exception {
+    final List<String> argList = getBaseArgs(JDBC_URL);
+    assertThat(checkScriptFile("-- a comment\n", argList),
+        contains(
+            "0: jdbc:hsqldb:mem:x> -- a comment\n"
+            + "0: jdbc:hsqldb:mem:x> "));
+    assertThat(checkScriptFile(" -- a comment\n", argList),
+        contains(
+            "0: jdbc:hsqldb:mem:x>  -- a comment\n"
+            + "0: jdbc:hsqldb:mem:x> "));
+    assertThat(checkScriptFile(" ## a -- comment ##  \n", argList),
+        contains(
+            "0: jdbc:hsqldb:mem:x>  ## a -- comment ##  \n"
+            + "0: jdbc:hsqldb:mem:x> "));
+    assertThat(checkScriptFile("# a comment\n", argList),
+        contains(
+            "0: jdbc:hsqldb:mem:x> # a comment\n"
+            + "0: jdbc:hsqldb:mem:x> "));
+  }
+
+  /**
    * HIVE-4566
    * @throws java.io.UnsupportedEncodingException
    */
