@@ -90,7 +90,6 @@ public class SqlLineTest {
    */
   @Test
   public void testPositiveScriptFile() throws Throwable {
-    final String substring = " default ";
     assertThat(checkScriptFile("values 1;\n", getBaseArgs(JDBC_URL)),
         contains("0: jdbc:hsqldb:mem:x> values 1;\n"
             + "+-------------+\n"
@@ -198,6 +197,46 @@ public class SqlLineTest {
 
     assertThat(checkCommandLineScript(argList),
         contains("FileNotFoundException"));
+  }
+
+  /**
+   * Launches sqlline with "-r propertiesFile".
+   */
+  @Test
+  public void testPropertiesFile() throws Exception {
+    // Create and delete a temp file
+    File propertiesFile = File.createTempFile("props", ".properties");
+    final FileOutputStream fos = new FileOutputStream(propertiesFile);
+    final PrintStream ps = new PrintStream(fos);
+    ps.println("driver=" + HSQLDB_JDBC_DRIVER);
+    ps.println("url=" + JDBC_URL + "yyy");
+    ps.println("user=sa");
+    ps.println("password=");
+    ps.close();
+
+    final List<String> argList = new ArrayList<String>();
+    argList.add("--silent=true");
+    argList.add("-r");
+    argList.add(propertiesFile.getAbsolutePath());
+
+    assertThat(checkScriptFile("values (1)", argList),
+        contains("jdbc:hsqldb:mem:xyyy> values"));
+    propertiesFile.delete();
+  }
+
+  /**
+   * Tests that a bad command-line argument gives an error.
+   */
+  @Test
+  public void testBadArg() throws Exception {
+    final List<String> argList = getBaseArgs(JDBC_URL);
+    argList.add("-badarg");
+
+    assertThat(checkScriptFile("values (1)", argList),
+        contains(
+            "Unrecognized argument: -badarg\n"
+            + "Usage: java org.apache.hive.sqlline.SqlLine \n"
+            + "   -u <database url>               the JDBC URL"));
   }
 
   /**
