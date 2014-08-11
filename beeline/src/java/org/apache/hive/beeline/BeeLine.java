@@ -17,6 +17,10 @@
  */
 package org.apache.hive.beeline;
 
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+
 import org.apache.hive.sqlline.SqlLine;
 import org.apache.hive.sqlline.SqlLineOpts;
 
@@ -30,6 +34,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.MissingResourceException;
+import java.util.Properties;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.SortedSet;
@@ -54,12 +59,6 @@ public class BeeLine extends SqlLine {
           "org.apache.hive.jdbc.HiveDriver",
           "com.mysql.jdbc.DatabaseMetaData"));
 
-  /** Prefix for command-line arguments that specify Hive variables. */
-  private static final String HIVE_VAR_ARG_PREFIX = "--hivevar";
-
-  /** Prefix for command-line arguments that specify Hive configuration. */
-  private static final String HIVE_CONF_ARG_PREFIX = "--hiveconf";
-
   /** Prefix to the name of properties (passed to getConnection) that specify
    * Hive variables. */
   private static final String HIVE_VAR_PREFIX = "hivevar:";
@@ -74,6 +73,56 @@ public class BeeLine extends SqlLine {
       new ChainResourceBundle(
           Arrays.asList(ResourceBundle.getBundle(BeeLine.class.getName()),
               SqlLine.RESOURCE_BUNDLE));
+
+  private static final Options COMMAND_LINE_OPTIONS = createBeeLineOptions();
+
+  @SuppressWarnings("AccessStaticViaInstance")
+  protected static Options createBeeLineOptions() {
+    // BeeLine options are an extension to SqlLine.
+    final Options options = createSqlLineOptions();
+
+    // Synchronized prevents other threads building options using the same
+    // static workspace in OptionBuilder.
+    synchronized (OptionBuilder.class) {
+      // -a <authType>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("authType")
+          .withDescription("the authentication type")
+          .create('a'));
+
+      // Substitution option --hivevar
+      options.addOption(OptionBuilder
+          .withValueSeparator()
+          .hasArgs(2)
+          .withArgName("key=value")
+          .withLongOpt("hivevar")
+          .withDescription("hive variable name and value")
+          .create());
+
+      //hive conf option --hiveconf
+      options.addOption(OptionBuilder
+          .withValueSeparator()
+          .hasArgs(2)
+          .withArgName("property=value")
+          .withLongOpt("hiveconf")
+          .withDescription("Use value for given property")
+          .create());
+    }
+    return options;
+  }
+
+  @Override
+  protected Options getCommandLineOptions() {
+    return COMMAND_LINE_OPTIONS;
+  }
+
+  @Override
+  protected boolean isSpecialArg(String arg) {
+    return arg.equals(HIVE_VAR_PREFIX)
+        || arg.equals(HIVE_CONF_PREFIX)
+        || super.isSpecialArg(arg);
+  }
 
   @Override
   protected SqlLineOpts createOpts() {
@@ -155,36 +204,21 @@ public class BeeLine extends SqlLine {
   }
 
   @Override
-  protected int customArg(List<String> args, int i) {
-    final String arg = args.get(i);
+  protected void assignOptions(CommandLine cl) {
+    super.assignOptions(cl);
 
-    // Authorization type
-    if (arg.equals("-a")) {
-      String authType = args.get(i + 1);
-      getOpts().setAuthType(authType);
-      return i + 2;
+    Properties hiveVars = cl.getOptionProperties("hivevar");
+    for (String key : hiveVars.stringPropertyNames()) {
+      getOpts().getHiveVariables().put(key, hiveVars.getProperty(key));
     }
 
-    // Parse hive variables
-    if (arg.equals(HIVE_VAR_ARG_PREFIX)) {
-      List<String> parts = split(args.get(i + 1), "=");
-      if (parts.size() != 2) {
-        return -1;
-      }
-      getOpts().getHiveVariables().put(parts.get(0), parts.get(1));
-      return i + 2; // 2 args consumed
+    Properties hiveConfs = cl.getOptionProperties("hiveconf");
+    for (String key : hiveConfs.stringPropertyNames()) {
+      getOpts().getHiveConfVariables().put(key, hiveConfs.getProperty(key));
     }
 
-    if (arg.equals(HIVE_CONF_ARG_PREFIX)) {
-      List<String> parts = split(args.get(i + 1), "=");
-      if (parts.size() != 2) {
-        return -1;
-      }
-      getOpts().getHiveConfVariables().put(parts.get(0), parts.get(1));
-      return i + 2; // 2 args consumed
-    }
-
-    return i; // no args consumed
+    String auth = cl.getOptionValue("a");
+    getOpts().setAuthType(auth);
   }
 
   @Override

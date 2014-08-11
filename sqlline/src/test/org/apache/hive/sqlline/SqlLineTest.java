@@ -234,7 +234,7 @@ public class SqlLineTest {
 
     assertThat(checkScriptFile("values (1)", argList),
         contains(
-            "Unrecognized argument: -badarg\n"
+            "Unrecognized option: -badarg\n"
             + "Usage: java org.apache.hive.sqlline.SqlLine \n"
             + "   -u <database url>               the JDBC URL"));
   }

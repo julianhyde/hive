@@ -50,8 +50,8 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.ResourceBundle;
@@ -62,6 +62,12 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.GnuParser;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 
 import jline.Terminal;
 import jline.TerminalFactory;
@@ -140,6 +146,8 @@ public class SqlLine {
   private ConsoleReader consoleReader;
   private List<String> batch = null;
   private final Reflector reflector;
+
+  private static final Options COMMAND_LINE_OPTIONS = createSqlLineOptions();
 
   // saveDir() is used in various opts that assume it's set. But that means
   // properties starting with "sqlline" are read into props in unspecific
@@ -350,6 +358,71 @@ public class SqlLine {
           new Object[] {testClass});
       throw new ExceptionInInitializerError(message);
     }
+  }
+
+  @SuppressWarnings("AccessStaticViaInstance")
+  protected static Options createSqlLineOptions() {
+    final Options options = new Options();
+
+    // Synchronized prevents other threads building options using the same
+    // static workspace in OptionBuilder.
+    synchronized (OptionBuilder.class) {
+      // -d <driver class>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("driver class")
+          .withDescription("the driver class to use")
+          .create('d'));
+
+      // -u <database url>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("database url")
+          .withDescription("the JDBC URL to connect to")
+          .create('u'));
+
+      // -n <username>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("username")
+          .withDescription("the username to connect as")
+          .create('n'));
+
+      // -p <password>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("password")
+          .withDescription("the password to connect as")
+          .create('p'));
+
+      // -e <query>
+      options.addOption(OptionBuilder
+          .hasArgs()
+          .withArgName("query")
+          .withDescription("query that should be executed")
+          .create('e'));
+
+      // -f <file>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("file")
+          .withDescription("script file that should be executed")
+          .create('f'));
+
+      // -r <file>
+      options.addOption(OptionBuilder
+          .hasArgs()
+          .withArgName("file")
+          .withDescription("connection specification file")
+          .create('r'));
+
+      // -help
+      options.addOption(OptionBuilder
+          .withLongOpt("help")
+          .withDescription("display this message")
+          .create('h'));
+    }
+    return options;
   }
 
   static Manifest getManifest() throws IOException {
@@ -677,70 +750,40 @@ public class SqlLine {
   }
 
   boolean initArgs(List<String> args) {
-    List<String> commands = new LinkedList<String>();
-    List<String> files = new LinkedList<String>();
-    String driver = null;
-    String user = null;
-    String pass = null;
-    String url = null;
+    final CommandLine cl;
 
-    for (int i = 0; i < args.size(); i++) {
-      final String arg = args.get(i);
-      if (arg.equals("--help") || arg.equals("-h")) {
-        // Return false here, so usage will be printed.
-        return false;
-      }
-
-      // Give sub-class opportunity to parse its arguments.
-      final int i2 = customArg(args, i);
-      if (i2 < 0) {
-        // Sub-class had an error.
-        return false;
-      }
-      if (i2 > i) {
-        // At least one argument was consumed. Go to the top of the loop.
-        i = i2 - 1;
-        continue;
-      }
-
-      // -- arguments are treated as properties
-      if (arg.startsWith("--")) {
-        List<String> parts = split(arg.substring(2), "=");
-        debug(loc("setting-prop", parts));
-        if (parts.size() > 0) {
-          boolean ret;
-
-          if (parts.size() >= 2) {
-            ret = getOpts().set(parts.get(0), parts.get(1), true);
-          } else {
-            ret = getOpts().set(parts.get(0), "true", true);
-          }
-
-          if (!ret) {
-            return false;
-          }
-        }
-        continue;
-      }
-
-      if (arg.equals("-d")) {
-        driver = args.get(++i);
-      } else if (arg.equals("-n")) {
-        user = args.get(++i);
-      } else if (arg.equals("-p")) {
-        pass = args.get(++i);
-      } else if (arg.equals("-u")) {
-        url = args.get(++i);
-      } else if (arg.equals("-e")) {
-        commands.add(args.get(++i));
-      } else if (arg.equals("-f")) {
-        getOpts().setScriptFile(args.get(++i));
-      } else if (arg.equals("-r")) {
-        files.add(args.get(++i));
-      } else {
-        return error(loc("unrecognized-argument", arg));
-      }
+    try {
+      final CommandLineParser parser = new CommandLineParser();
+      final String[] argArray = args.toArray(new String[args.size()]);
+      cl = parser.parse(getCommandLineOptions(), argArray);
+    } catch (ParseException e1) {
+      output(e1.getMessage());
+      return false;
     }
+
+    if (cl.hasOption("help")) {
+      // Return false here, so usage will be printed.
+      return false;
+    }
+
+    String driver = cl.getOptionValue("d");
+    final String user = cl.getOptionValue("n");
+    final String pass = cl.getOptionValue("p");
+    String url = cl.getOptionValue("u");
+    getOpts().setScriptFile(cl.getOptionValue("f"));
+    final List<String> commands;
+    if (cl.getOptionValues('e') != null) {
+      commands = Arrays.asList(cl.getOptionValues('e'));
+    } else {
+      commands = Collections.emptyList();
+    }
+    final List<String> files;
+    if (cl.getOptionValues('r') != null) {
+      files = Arrays.asList(cl.getOptionValues('r'));
+    } else {
+      files = Collections.emptyList();
+    }
+    assignOptions(cl);
 
     if (url == null) {
       url = defaultJdbcUrl;
@@ -785,26 +828,21 @@ public class SqlLine {
     return true;
   }
 
-  /** Performs custom argument parsing.
-   *
-   * <p>Derived classes may override this method to parse custom arguments.</p>
-   *
-   * <p>If an argument is recognized, returns the index of the next argument to
-   * be parsed. (For example, returns {@code i + 2} after recognizing two
-   * arguments "{@code -C 10}".)</p>
-   *
-   * <p>If there is an error, returns -1, which will cause SqlLine to abort
-   * argument parsing.</p>
-   *
-   * <p>The default implementation does nothing, and returns {@code i}
-   * unchanged.</p>
-   *
-   * @param args Argument list
-   * @param i Index of argument to parse
-   * @return Index of next argument to parse, or -1 on error
-   */
-  protected int customArg(List<String> args, int i) {
-    return i;
+  /** Returns the options allowed for command-line arguments.
+   * Derived class may override. */
+  protected Options getCommandLineOptions() {
+    return COMMAND_LINE_OPTIONS;
+  }
+
+  /** Returns whether an argument is handled explicitly. If not, it will be
+   * used to set a property. */
+  protected boolean isSpecialArg(String arg) {
+    return arg.equals("--help");
+  }
+
+  /** Processes options parsed from command-line arguments.
+   * Derived class may override. */
+  protected void assignOptions(CommandLine cl) {
   }
 
   /**
@@ -2126,6 +2164,26 @@ public class SqlLine {
     ARGS,
     /** Any other error besides arguments. */
     OTHER
+  }
+
+  /** Command-line parser. */
+  private class CommandLineParser extends GnuParser {
+    @Override
+    protected void processOption(final String arg, final ListIterator iter)
+        throws ParseException {
+      if (arg.startsWith("--") && !isSpecialArg(arg)) {
+        String stripped = arg.substring(2, arg.length());
+        List<String> parts = split(stripped, "=");
+        debug(loc("setting-prop", parts));
+        if (parts.size() >= 2) {
+          getOpts().set(parts.get(0), parts.get(1), true);
+        } else {
+          getOpts().set(parts.get(0), "true", true);
+        }
+      } else {
+        super.processOption(arg, iter);
+      }
+    }
   }
 }
 
