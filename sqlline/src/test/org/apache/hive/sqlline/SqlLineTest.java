@@ -240,6 +240,31 @@ public class SqlLineTest {
   }
 
   /**
+   * Tests the "close" command.
+   */
+  @Test
+  public void testClose() throws Exception {
+    final List<String> argList = getBaseArgs(JDBC_URL);
+    assertThat(
+        checkScriptFile(
+            "values (1);\n"
+            + "!close\n"
+            + "values (1);\n"
+            + "!close\n",
+            argList),
+        contains(
+            "0: jdbc:hsqldb:mem:x> values (1);\n"
+            + "+-------------+\n"
+            + "|     C1      |\n"
+            + "+-------------+\n"
+            + "| 1           |\n"
+            + "+-------------+\n"
+            + "0: jdbc:hsqldb:mem:x> !close\n"
+            + "sqlline> values (1);\n"
+            + "No current connection\n"));
+  }
+
+  /**
    * HIVE-4566
    * @throws java.io.UnsupportedEncodingException
    */

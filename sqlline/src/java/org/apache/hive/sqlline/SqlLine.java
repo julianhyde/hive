@@ -984,20 +984,34 @@ public class SqlLine {
       for (CommandHandler commandHandler : commandHandlers) {
         String match = commandHandler.matches(line);
         if (match != null) {
-          cmdMap.put(match, commandHandler);
+          CommandHandler prev = cmdMap.put(match, commandHandler);
+          if (prev != null) {
+            callback.setStatus(DispatchCallback.Status.FAILURE);
+            error(loc("multiple-matches", commandHandler.getName()));
+          }
         }
       }
 
-      if (cmdMap.size() == 0) {
+      final CommandHandler handler;
+      switch (cmdMap.size()) {
+      case 0:
         callback.setStatus(DispatchCallback.Status.FAILURE);
         error(loc("unknown-command", line));
-      } else if (cmdMap.size() > 1) {
-        callback.setStatus(DispatchCallback.Status.FAILURE);
-        error(loc("multiple-matches", cmdMap.keySet().toString()));
-      } else {
+        return;
+      case 1:
         callback.setStatus(DispatchCallback.Status.RUNNING);
-        final CommandHandler commandHandler = cmdMap.values().iterator().next();
-        commandHandler.execute(line, callback);
+        handler = cmdMap.values().iterator().next();
+        handler.execute(line, callback);
+        return;
+      default:
+        // Multiple matches. If there is an exact match, it wins.
+        handler = cmdMap.get(line);
+        if (handler != null) {
+          handler.execute(line, callback);
+        } else {
+          error(loc("multiple-matches", cmdMap.keySet().toString()));
+        }
+        return;
       }
     } else {
       callback.setStatus(DispatchCallback.Status.RUNNING);
