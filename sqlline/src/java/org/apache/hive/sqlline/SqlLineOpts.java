@@ -77,6 +77,7 @@ public class SqlLineOpts implements Completer {
   private final File rcFile;
   private String historyFile;
   private String runFile;
+  private String initFile;
   private String scriptFile;
 
   public SqlLineOpts(SqlLine sqlLine, Properties props, String propFileName,
@@ -367,6 +368,14 @@ public class SqlLineOpts implements Completer {
 
   public String getScriptFile() {
     return scriptFile;
+  }
+
+  public String getInitFile() {
+    return initFile;
+  }
+
+  public void setInitFile(String initFile) {
+    this.initFile = initFile;
   }
 
   public void setColor(boolean color) {

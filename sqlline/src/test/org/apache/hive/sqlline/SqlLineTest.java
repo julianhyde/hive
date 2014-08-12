@@ -29,7 +29,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import org.hamcrest.BaseMatcher;
 import org.hamcrest.CoreMatchers;
+import org.hamcrest.Description;
 import org.hamcrest.Matcher;
 
 import org.junit.Assert;
@@ -188,7 +190,7 @@ public class SqlLineTest {
   @Test
   public void testNegativeScriptFile() throws Exception {
     // Create and delete a temp file
-    File scriptFile = File.createTempFile("sqllinenegative", ".sql");
+    File scriptFile = makeFile("dummy");
     scriptFile.delete();
 
     List<String> argList = getBaseArgs(JDBC_URL);
@@ -295,7 +297,7 @@ public class SqlLineTest {
    */
   @Test
   public void testNPE() throws UnsupportedEncodingException {
-    SqlLine sqlLine = new SqlLine(false, null, null);
+    SqlLine sqlLine = new SqlLine(false, false, null, null);
 
     ByteArrayOutputStream os = new ByteArrayOutputStream();
     PrintStream sqllineOutputStream = new PrintStream(os);
@@ -318,7 +320,7 @@ public class SqlLineTest {
    * Unit test for {@link org.apache.hive.sqlline.SqlLine#splitCompound(String)}.
    */
   @Test public void testSplitCompound() {
-    final SqlLine line = new SqlLine(false, null, null);
+    final SqlLine line = new SqlLine(false, false, null, null);
     String[][] strings;
 
     // simple line
@@ -392,7 +394,7 @@ public class SqlLineTest {
 
   @Test public void testManual() {
     final ByteArrayOutputStream out = new ByteArrayOutputStream();
-    final SqlLine line = new SqlLine(false, null, null);
+    final SqlLine line = new SqlLine(false, false, null, null);
     final PrintStream ps = new PrintStream(out);
     line.setOutputStream(ps);
     line.setErrorStream(ps);
@@ -425,13 +427,23 @@ public class SqlLineTest {
   }
 
   @Test public void testError() throws IOException {
-    checkInOut("!bad-command\n",
-        "sqlline> !bad-command\nUnknown command: bad-command\nsqlline> ",
+    // as file, quits and returns error
+    checkFile("!bad-command\n!set color\n",
+        "sqlline> !bad-command\nUnknown command: bad-command\n\n",
         SqlLine.Status.OTHER);
+
+    // as input, carries on, and returns OK
+    checkIn("!bad-command\n!set color\n",
+        "sqlline> !bad-command\n"
+        + "Unknown command: bad-command\n"
+        + "sqlline> !set color\n"
+        + "Usage: set <key> <value>\n"
+        + "sqlline> ");
   }
 
   @Test public void testSet() throws IOException {
-    checkInOut("!set color red\n"
+    checkInOut(true,
+        "!set color red\n"
             + "!set\n",
         allOf(
             contains("sqlline> !set color red\n"),
@@ -440,7 +452,8 @@ public class SqlLineTest {
   }
 
   @Test public void testNullEmptyString() throws IOException {
-    checkInOut("!nullemptystring true\n"
+    checkIn(
+        "!nullemptystring true\n"
         + "!nullemptystring false\n"
         + "!nullemptystring 1\n"
         + "!nullemptystring yes\n"
@@ -460,34 +473,93 @@ public class SqlLineTest {
         + "sqlline> !nullemptystring foo\n"
         + "sqlline> !set nullemptystring true\n"
         + "sqlline> !set nullemptystring foo\n"
-        + "sqlline> ",
-        SqlLine.Status.OK);
+        + "sqlline> ");
 
-    checkInOut("!set nullemptystring\n",
+    checkFile("!set nullemptystring\n",
         "sqlline> !set nullemptystring\n"
-        + "Usage: set <key> <value>\n"
-        + "sqlline> ",
+        + "Usage: set <key> <value>\n\n",
         SqlLine.Status.OTHER);
   }
 
-  private void checkInOut(String in, String expectedOut,
+  private void checkFile(String in, String expectedOut,
       SqlLine.Status expectedStatus) throws IOException {
-    checkInOut(in, equalTo(expectedOut), expectedStatus);
+    checkInOut(true, in, equalTo(expectedOut), expectedStatus);
   }
 
-  private void checkInOut(String in, Matcher<String> outputMatcher,
+  private void checkIn(String in, String expectedOut) throws IOException {
+    checkInOut(false, in, equalTo(expectedOut), SqlLine.Status.OK);
+  }
+
+  private void checkInOut(boolean asFile,
+      String in, Matcher<String> outputMatcher,
       SqlLine.Status expectedStatus) throws IOException {
-    final SqlLine line = new SqlLine(false, null, null);
+    final SqlLine line = new SqlLine(false, false, null, null);
     final ByteArrayOutputStream out = new ByteArrayOutputStream();
     final PrintStream ps = new PrintStream(out);
     line.setOutputStream(ps);
     line.setErrorStream(ps);
-    final ByteArrayInputStream inputStream =
-        new ByteArrayInputStream(in.getBytes());
+    final ByteArrayInputStream inputStream;
+    final List<String> args;
+    File scriptFile;
+    if (asFile) {
+      inputStream = new ByteArrayInputStream(new byte[0]);
+      scriptFile = makeFile(in);
+      args = Arrays.asList("-f", scriptFile.getAbsolutePath());
+    } else {
+      inputStream = new ByteArrayInputStream(in.getBytes());
+      args = Arrays.asList("--silent");
+      scriptFile = null;
+    }
     SqlLine.Status status =
-        line.begin(Arrays.asList("--silent"), inputStream, false);
+        line.begin(args, inputStream);
     assertThat(out.toString(), outputMatcher);
     assertThat(status, equalTo(expectedStatus));
+    if (scriptFile != null) {
+      scriptFile.delete();
+    }
+  }
+
+  private File makeFile(String in) throws IOException {
+    final File scriptFile = File.createTempFile("sqlline", ".sql");
+    final FileOutputStream fos = new FileOutputStream(scriptFile);
+    fos.write(in.getBytes());
+    fos.close();
+    return scriptFile;
+  }
+
+  /** Tests a run that has both an init file and a script file. */
+  @Test public void testInitAndScript() throws IOException {
+    final SqlLine line = new SqlLine(false, false, null, null);
+    final ByteArrayOutputStream out = new ByteArrayOutputStream();
+    final PrintStream ps = new PrintStream(out);
+    line.setOutputStream(ps);
+    line.setErrorStream(ps);
+    File initFile = makeFile("!set color true");
+    File scriptFile = makeFile("!set color false");
+    final List<String> args = Arrays.asList(
+        "-i", initFile.getAbsolutePath(),
+        "-f", scriptFile.getAbsolutePath(),
+        "-d", HSQLDB_JDBC_DRIVER,
+        "-u", JDBC_URL);
+
+    SqlLine.Status status = line.begin(args, null);
+    assertThat(out.toString(), new BaseMatcher<String>() {
+      @Override
+      public boolean matches(Object o) {
+        return ((String) o).matches(
+            "Running init script .*.sql\n"
+            + "0: jdbc:hsqldb:mem:x> !set color true\n"
+            + "0: jdbc:hsqldb:mem:x> !set color false\n"
+            + "Closing: 0: jdbc:hsqldb:mem:x\n");
+      }
+
+      @Override
+      public void describeTo(Description description) {
+      }
+    });
+    assertThat(status, equalTo(SqlLine.Status.OK));
+    initFile.delete();
+    scriptFile.delete();
   }
 
   @Test public void testWrap() {
@@ -515,12 +587,12 @@ public class SqlLineTest {
    * Executes a script.
    */
   private String checkCommandLineScript(List<String> argList) throws Exception {
-    SqlLine sqlLine = new SqlLine(false, null, null);
+    SqlLine sqlLine = new SqlLine(false, false, null, null);
     ByteArrayOutputStream os = new ByteArrayOutputStream();
     PrintStream ps = new PrintStream(os);
     sqlLine.setOutputStream(ps);
     sqlLine.setErrorStream(ps);
-    sqlLine.begin(argList, null, false);
+    sqlLine.begin(argList, null);
     return os.toString("UTF8");
   }
 
@@ -555,7 +627,8 @@ public class SqlLineTest {
   @Test public void testTab() throws Exception {
     assertThat(
         checkScriptFile("!set color\t red\n", Arrays.<String>asList()),
-        equalTo("sqlline version ???\nsqlline> !set color red\nsqlline> "));
+        equalTo("sqlline> !set color red\n"
+            + "sqlline> \n"));
   }
 
   /** Output with header. */
@@ -583,7 +656,7 @@ public class SqlLineTest {
             + "+-------------+---+\n"
             + "| 3           | c |\n"
             + "+-------------+---+\n"
-            + "0: jdbc:hsqldb:mem:x> "));
+            + "0: jdbc:hsqldb:mem:x> \n"));
   }
 
   /** Output with headers disabled. */
@@ -606,7 +679,7 @@ public class SqlLineTest {
             + "| 2           | b |\n"
             + "| 3           | c |\n"
             + "+-------------+---+\n"
-            + "0: jdbc:hsqldb:mem:x> "));
+            + "0: jdbc:hsqldb:mem:x> \n"));
   }
 }
 

@@ -366,14 +366,14 @@ public class HiveSchemaTool {
     argList.add(sqlScriptFile);
 
     // run the script using Beeline
-    BeeLine beeLine = new BeeLine();
+    BeeLine beeLine = new BeeLine(false);
     if (!verbose) {
       beeLine.setOutputStream(new PrintStream(new NullOutputStream()));
       beeLine.getOpts().setSilent(true);
     }
     //beeLine.getOpts().setAllowMultiLineCommand(false);
     beeLine.getOpts().setIsolation("TRANSACTION_READ_COMMITTED");
-    SqlLine.Status status = beeLine.begin(argList, null, false);
+    SqlLine.Status status = beeLine.begin(argList, null);
     switch (status) {
     case OK:
       break;
