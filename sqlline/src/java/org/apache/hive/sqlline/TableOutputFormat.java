@@ -40,21 +40,27 @@ class TableOutputFormat implements OutputFormat {
     for (; rows.hasNext();) {
       Rows.Row row = rows.next();
       ColorBuffer cbuf = getOutputString(rows, row);
-      cbuf = cbuf.truncate(width);
+      if (sqlLine.getOpts().getTruncateTable()) {
+        cbuf = cbuf.truncate(width);
+      }
 
       if (index == 0)  {
         sb.setLength(0);
         for (int j = 0; j < row.sizes.length; j++) {
+          if (j > 0) {
+            sb.append("-+-");
+          }
           for (int k = 0; k < row.sizes[j]; k++) {
             sb.append('-');
           }
-          sb.append("-+-");
         }
 
         headerCols = cbuf;
         header = sqlLine.getColorBuffer()
-            .green(sb.toString())
-            .truncate(headerCols.getVisibleLength());
+            .green(sb.toString());
+        if (sqlLine.getOpts().getTruncateTable()) {
+          header = header.truncate(headerCols.getVisibleLength());
+        }
       }
 
       if (sqlLine.getOpts().getShowHeader()) {
