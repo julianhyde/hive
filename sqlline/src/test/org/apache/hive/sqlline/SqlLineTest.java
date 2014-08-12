@@ -693,6 +693,48 @@ public class SqlLineTest {
             + "+-------------+---+\n"
             + "0: jdbc:hsqldb:mem:x> \n"));
   }
+
+  /** Output a wide table with truncateTable=false. */
+  @Test public void testTruncate() throws Exception {
+    final List<String> argList = getBaseArgs(JDBC_URL);
+    argList.add("--truncateTable=false");
+    argList.add("--maxWidth=20");
+    assertThat(
+        checkScriptFile(
+            "select * from (values ('abcdefghij', 'abcdef', 1234567))\n"
+            + "  as t(x, y, z);\n",
+            argList),
+        equalTo(
+            "0: jdbc:hsqldb:mem:x> select * from (values ('abcdefghij', 'abcdef', 1234567))\n"
+            + ". . . . . . . . . . >   as t(x, y, z);\n"
+            + "+------------+--------+-------------+\n"
+            + "|     X      |   Y    |      Z      |\n"
+            + "+------------+--------+-------------+\n"
+            + "| abcdefghij | abcdef | 1234567     |\n"
+            + "+------------+--------+-------------+\n"
+            + "0: jdbc:hsqldb:mem:x> \n"));
+  }
+
+  /** Output a wide table with truncateTable=true. */
+  @Test public void testNoTruncate() throws Exception {
+    final List<String> argList = getBaseArgs(JDBC_URL);
+    argList.add("--truncateTable=true");
+    argList.add("--maxWidth=20");
+    assertThat(
+        checkScriptFile(
+            "select * from (values ('abcdefghij', 'abcdef', 1234567))\n"
+            + "  as t(x, y, z);\n",
+            argList),
+        equalTo(
+            "0: jdbc:hsqldb:mem:x> select * from (values ('abcdefghij', 'abcdef', 1234567))\n"
+            + ". . . . . . . . . . >   as t(x, y, z);\n"
+            + "+------------+-----+\n"
+            + "|     X      |   Y |\n"
+            + "+------------+-----+\n"
+            + "| abcdefghij | abc |\n"
+            + "+------------+-----+\n"
+            + "0: jdbc:hsqldb:mem:x> \n"));
+  }
 }
 
 // End SqlLineTest.java

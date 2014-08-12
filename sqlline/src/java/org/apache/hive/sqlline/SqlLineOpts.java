@@ -73,6 +73,7 @@ public class SqlLineOpts implements Completer {
   private boolean allowMultiLineCommand = true;
   // This can be set for old behavior of nulls printed as empty strings
   private boolean nullEmptyString = false;
+  private boolean truncateTable = false;
 
   private final File rcFile;
   private String historyFile;
@@ -496,5 +497,13 @@ public class SqlLineOpts implements Completer {
 
   public String getNullString() {
     return nullEmptyString ? "" : DEFAULT_NULL_STRING;
+  }
+
+  public boolean getTruncateTable() {
+    return truncateTable;
+  }
+  
+  public void setTruncateTable(boolean truncateTable) {
+    this.truncateTable = truncateTable;
   }
 }

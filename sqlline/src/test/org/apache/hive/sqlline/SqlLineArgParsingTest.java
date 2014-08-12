@@ -68,11 +68,13 @@ public class SqlLineArgParsingTest {
   public void testSqlLineOpts() throws Exception {
     ArgCapturingSqlLine bl = new ArgCapturingSqlLine();
     List<String> args = Arrays.asList("-u", "url", "-n", "name",
-      "-p", "password", "-d", "driver", "--autoCommit=true", "--verbose");
+        "-p", "password", "-d", "driver", "--autoCommit=true", "--verbose",
+        "--truncateTable");
     Assert.assertTrue(bl.initArgs(args));
     Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
     Assert.assertTrue(bl.getOpts().getAutoCommit());
     Assert.assertTrue(bl.getOpts().getVerbose());
+    Assert.assertTrue(bl.getOpts().getTruncateTable());
   }
 
   /**
