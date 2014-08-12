@@ -174,7 +174,7 @@ public class BeeLine extends SqlLine {
    * Starts the program.
    */
   public static void main(String[] args) throws IOException {
-    new BeeLine().start2(Arrays.asList(args), null, true);
+    new BeeLine().start2(Arrays.asList(args), null);
   }
 
   /**
@@ -193,12 +193,16 @@ public class BeeLine extends SqlLine {
       String[] args,
       InputStream inputStream)
       throws IOException {
-    return new BeeLine().start2(Arrays.asList(args), inputStream, false);
+    return new BeeLine(false).start2(Arrays.asList(args), inputStream);
   }
 
   public BeeLine() {
+    this(true);
+  }
+
+  public BeeLine(boolean saveHistory) {
     // disable default driver and URL for easier debugging; TODO: enable
-    super(false,
+    super(false, saveHistory,
         false ? BEELINE_DEFAULT_JDBC_DRIVER : null,
         false ? BEELINE_DEFAULT_JDBC_URL : null);
   }

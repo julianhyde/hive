@@ -1002,7 +1002,7 @@ public class Commands {
     }
   }
 
-  private static void closeStream(Closeable stream) {
+  static void closeStream(Closeable stream) {
     try {
       if (stream != null) {
         stream.close();
@@ -1108,7 +1108,7 @@ public class Commands {
           new DatabaseConnection(sqlLine, driver, url2, info,
               username, password));
       sqlLine.getDatabaseConnection().getConnection();
-
+      sqlLine.runInit(callback);
       sqlLine.setCompletions();
       callback.setToSuccess();
     } catch (Exception e) {

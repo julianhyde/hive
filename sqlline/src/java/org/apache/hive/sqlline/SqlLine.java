@@ -17,7 +17,7 @@
  */
 package org.apache.hive.sqlline;
 
-import java.io.ByteArrayInputStream;
+import java.io.Closeable;
 import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
@@ -80,8 +80,9 @@ import jline.console.history.FileHistory;
 
 /**
  * A console SQL shell with command completion.
- * <p>
- * TODO:
+ *
+ * <p>TODO:
+ *
  * <ul>
  * <li>User-friendly connection prompts</li>
  * <li>Page results</li>
@@ -93,7 +94,7 @@ import jline.console.history.FileHistory;
  * <li>XA transactions</li>
  * </ul>
  */
-public class SqlLine {
+public class SqlLine implements Closeable {
   protected static final ResourceBundle RESOURCE_BUNDLE =
       ResourceBundle.getBundle(SqlLine.class.getName());
 
@@ -127,7 +128,7 @@ public class SqlLine {
     "                        ",
   };
 
-  private static boolean initComplete = false;
+  private boolean initComplete = false;
 
   private final String defaultJdbcDriver;
   private final String defaultJdbcUrl;
@@ -146,6 +147,8 @@ public class SqlLine {
   private ConsoleReader consoleReader;
   private List<String> batch = null;
   private final Reflector reflector;
+  private final boolean saveHistory;
+  private FileHistory history;
 
   private static final Options COMMAND_LINE_OPTIONS = createSqlLineOptions();
 
@@ -395,6 +398,13 @@ public class SqlLine {
           .withDescription("the password to connect as")
           .create('p'));
 
+      // -i <init file>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("init")
+          .withDescription("script file for initialization")
+          .create('i'));
+
       // -e <query>
       options.addOption(OptionBuilder
           .hasArgs()
@@ -402,17 +412,17 @@ public class SqlLine {
           .withDescription("query that should be executed")
           .create('e'));
 
-      // -f <file>
+      // -f <script file>
       options.addOption(OptionBuilder
           .hasArg()
-          .withArgName("file")
+          .withArgName("script file")
           .withDescription("script file that should be executed")
           .create('f'));
 
-      // -r <file>
+      // -r <spec file>
       options.addOption(OptionBuilder
           .hasArgs()
-          .withArgName("file")
+          .withArgName("spec file")
           .withDescription("connection specification file")
           .create('r'));
 
@@ -537,8 +547,8 @@ public class SqlLine {
    */
   public static void main(String[] args)
       throws IOException {
-    final SqlLine sqlLine = new SqlLine(false, null, null);
-    sqlLine.start2(Arrays.asList(args), null, true);
+    final SqlLine sqlLine = new SqlLine(false, true, null, null);
+    sqlLine.start2(Arrays.asList(args), null);
   }
 
   /**
@@ -553,12 +563,14 @@ public class SqlLine {
       String[] args,
       InputStream inputStream)
       throws IOException {
-    final SqlLine sqlLine = new SqlLine(false, null, null);
-    return sqlLine.start2(Arrays.asList(args), inputStream, false);
+    final SqlLine sqlLine = new SqlLine(false, false, null, null);
+    return sqlLine.start2(Arrays.asList(args), inputStream);
   }
 
-  protected SqlLine(boolean withSignalHandler, String defaultJdbcDriver,
+  protected SqlLine(boolean withSignalHandler, boolean saveHistory,
+      String defaultJdbcDriver,
       String defaultJdbcUrl) {
+    this.saveHistory = saveHistory;
     this.defaultJdbcDriver = defaultJdbcDriver;
     this.defaultJdbcUrl = defaultJdbcUrl;
     this.opts = createOpts();
@@ -604,15 +616,14 @@ public class SqlLine {
       String[] args,
       InputStream inputStream,
       boolean saveHistory) throws IOException {
-    return new SqlLine(false, null, null)
-        .start2(Arrays.asList(args), inputStream, saveHistory);
+    return new SqlLine(false, saveHistory, null, null)
+        .start2(Arrays.asList(args), inputStream);
   }
 
   protected Status start2(
       List<String> args,
-      InputStream inputStream,
-      boolean saveHistory) throws IOException {
-    Status status = begin(args, inputStream, saveHistory);
+      InputStream inputStream) throws IOException {
+    Status status = begin(args, inputStream);
 
     // exit the system: useful for Hypersonic and other
     // badly-behaving systems
@@ -770,6 +781,7 @@ public class SqlLine {
     final String user = cl.getOptionValue("n");
     final String pass = cl.getOptionValue("p");
     String url = cl.getOptionValue("u");
+    getOpts().setInitFile(cl.getOptionValue("i"));
     getOpts().setScriptFile(cl.getOptionValue("f"));
     final List<String> commands;
     if (cl.getOptionValues('e') != null) {
@@ -852,10 +864,8 @@ public class SqlLine {
    *
    * @return 0 on success, 1 on invalid arguments, and 2 on any other error
    */
-  public Status begin(List<String> args, InputStream inputStream,
-      boolean saveHistory)
+  public Status begin(List<String> args, InputStream inputStream)
       throws IOException {
-    Status status = Status.OK;
     try {
       // load the options first, so we can override on the command line
       getOpts().load();
@@ -863,59 +873,82 @@ public class SqlLine {
       handleException(e);
     }
 
-    FileHistory fileHistory =
-        new FileHistory(new File(opts.getHistoryFile()));
-    if (!initArgs(args)) {
-      usage();
-      return Status.ARGS;
-    }
+    history = new FileHistory(new File(opts.getHistoryFile()));
 
     final DispatchCallback callback = new DispatchCallback();
-    ConsoleReader reader;
-    final boolean runningScript = getOpts().getScriptFile() != null;
-    if (runningScript) {
-      try {
-        FileInputStream scriptStream =
-            new FileInputStream(getOpts().getScriptFile());
-        reader = getConsoleReader(scriptStream, fileHistory);
-      } catch (Throwable t) {
-        handleException(t);
-        commands.quit(null, callback);
-        status = Status.OTHER;
-
-        // Set up a dummy console reader to complete proceedings.
-        final InputStream emptyStream = new ByteArrayInputStream(new byte[0]);
-        reader = getConsoleReader(emptyStream, null);
-      }
-    } else {
-      reader = getConsoleReader(inputStream, fileHistory);
-    }
-
     try {
-      info(getApplicationTitle());
-    } catch (Exception e) {
-      handleException(e);
-    }
+      if (!initArgs(args)) {
+        usage();
+        return Status.ARGS;
+      }
 
-    // basic setup done. From this point on, honor opts value for showing
-    // exception
-    initComplete = true;
+      // Basic setup done. From this point on, honor opts value for showing
+      // exception.
+      initComplete = true;
+
+      if (getOpts().getScriptFile() != null) {
+        return executeFile(getOpts().getScriptFile(), callback);
+      }
+      try {
+        info(getApplicationTitle());
+      } catch (Exception e) {
+        handleException(e);
+      }
+      ConsoleReader reader = getConsoleReader(inputStream, history);
+      return execute(reader, callback, false);
+    } finally {
+      close();
+    }
+  }
+
+  Status runInit(DispatchCallback callback) {
+    String initFile = getOpts().getInitFile();
+    if (initFile != null) {
+      info("Running init script " + initFile);
+      try {
+        return executeFile(initFile, callback);
+      } finally {
+        exit = false;
+      }
+    }
+    return Status.OK;
+  }
+
+  private Status executeFile(String fileName, DispatchCallback callback) {
+    FileInputStream initStream = null;
+    try {
+      initStream = new FileInputStream(fileName);
+      return execute(getConsoleReader(initStream, history), callback, true);
+    } catch (Throwable t) {
+      handleException(t);
+      return Status.OTHER;
+    } finally {
+      Commands.closeStream(initStream);
+      consoleReader = null;
+      output("");   // dummy new line
+    }
+  }
+
+  private Status execute(ConsoleReader reader, DispatchCallback callback,
+      boolean exitOnError) {
     while (!exit) {
       try {
+        // Execute one instruction; terminate on executing a script if there is
+        // an error.
         if (signalHandler != null) {
           signalHandler.setCallback(callback);
         }
         dispatch(reader.readLine(getPrompt()), callback);
         if (saveHistory) {
-          fileHistory.flush();
+          history.flush();
         }
-        if (runningScript && callback.isFailure()) {
+        if (exitOnError && callback.isFailure()) {
           commands.quit(null, callback);
-          status = Status.OTHER;
+          return Status.OTHER;
         }
-      } catch (EOFException eof) {
-        // CTRL-D
-        commands.quit(null, callback);
+      } catch (EOFException e) {
+        setExit(true);  // CTRL-D
+        return Status.OK;
       } catch (UserInterruptException ioe) {
         // CTRL-C
         try {
@@ -927,23 +960,15 @@ public class SqlLine {
         }
       } catch (Throwable t) {
         handleException(t);
-        callback.setToFailure();
-        status = Status.OTHER;
+        return Status.OTHER;
       }
     }
-    // ### NOTE jvs 10-Aug-2004: Clean up any outstanding
-    // connections automatically.
-    // nothing is done with the callback beyond
-    commands.closeall(null, new DispatchCallback());
-    if (callback.isFailure()) {
-      status = Status.OTHER;
-    }
-    return status;
+    return Status.OK;
   }
 
+  @Override
   public void close() {
     final DispatchCallback callback = new DispatchCallback();
-    commands.quit(null, callback);
     commands.closeall(null, callback);
   }
 
@@ -1757,6 +1782,8 @@ public class SqlLine {
 
     if (e instanceof SQLException) {
       handleSQLException((SQLException) e);
+    } else if (e instanceof EOFException) {
+      setExit(true);  // CTRL-D
     } else if (!initComplete && !getOpts().getVerbose()) {
       // all init errors must be verbose
       if (e.getMessage() == null) {

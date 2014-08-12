@@ -115,7 +115,7 @@ public class SqlLineArgParsingTest {
     List<String> queries = new ArrayList<String>();
 
     protected ArgCapturingSqlLine() {
-      super(false, null, null);
+      super(false, false, null, null);
     }
 
     @Override
