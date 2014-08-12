@@ -562,6 +562,18 @@ public class SqlLineTest {
     scriptFile.delete();
   }
 
+  @Test public void testShell() throws IOException {
+    checkFile("!sh echo 123 45\n",
+        "sqlline> !sh echo 123 45\n123 45\nsqlline> \n",
+        SqlLine.Status.OK);
+    checkFile("!sh false\n",
+        "sqlline> !sh false\nCommand failed with exit code = 1\n\n",
+        SqlLine.Status.OTHER);
+    checkFile("!sh\n",
+        "sqlline> !sh\n\n",
+        SqlLine.Status.OTHER);
+  }
+
   @Test public void testWrap() {
     assertThat(SqlLine.wrap("ab cd ef", 1, 0), equalTo("\nab\ncd\nef"));
     assertThat(SqlLine.wrap("ab cd ef", 2, 0), equalTo("ab\ncd\nef"));

@@ -24,6 +24,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PrintStream;
 import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -777,6 +778,36 @@ public class Commands {
     execute(line, false, callback);
   }
 
+  public void sh(String line, DispatchCallback callback) {
+    if (!line.startsWith("sh")) {
+      callback.setToFailure();
+      return;
+    }
+
+    line = line.substring("sh".length()).trim();
+
+    if (line.length() == 0) {
+      callback.setToFailure();
+      return;
+    }
+    try {
+      ShellCmdExecutor executor =
+          new ShellCmdExecutor(line, sqlLine.getOutputStream(),
+              sqlLine.getErrorStream());
+      int ret = executor.execute();
+      if (ret != 0) {
+        sqlLine.output("Command failed with exit code = " + ret);
+        callback.setToFailure();
+      } else {
+        callback.setToSuccess();
+      }
+    } catch (Exception e) {
+      callback.setToFailure();
+      sqlLine.error("Exception raised from Shell command " + e);
+      sqlLine.error(e);
+    }
+  }
+
   public void call(String line, DispatchCallback callback) {
     execute(line, true, callback);
   }
@@ -1470,5 +1501,78 @@ public class Commands {
   public void nullemptystring(String line, DispatchCallback callback) {
     // "nullemptystring foo" becomes "set nullemptystring foo"
     set("set " + line, callback);
+  }
+
+  /** Executes an operating system command, and deals with stdout and stderr.
+   *
+   * <p>Copied from org.apache.hadoop.hive.common.cli. */
+  private static class ShellCmdExecutor {
+    private String cmd;
+    private PrintStream out;
+    private PrintStream err;
+
+    public ShellCmdExecutor(String cmd, PrintStream out, PrintStream err) {
+      this.cmd = cmd;
+      this.out = out;
+      this.err = err;
+    }
+
+    public int execute() throws Exception {
+      try {
+        Process executor = Runtime.getRuntime().exec(cmd);
+        StreamPrinter outPrinter =
+            new StreamPrinter(executor.getInputStream(), null, out);
+        StreamPrinter errPrinter =
+            new StreamPrinter(executor.getErrorStream(), null, err);
+
+        outPrinter.start();
+        errPrinter.start();
+
+        int ret = executor.waitFor();
+        outPrinter.join();
+        errPrinter.join();
+        return ret;
+      } catch (IOException ex) {
+        throw new Exception("Failed to execute " + cmd, ex);
+      }
+    }
+  }
+
+  /** Copied from org.apache.hive.common.util. */
+  private static class StreamPrinter extends Thread {
+    final InputStream is;
+    final String type;
+    final PrintStream os;
+
+    public StreamPrinter(InputStream is, String type, PrintStream os) {
+      this.is = is;
+      this.type = type;
+      this.os = os;
+    }
+
+    @Override
+    public void run() {
+      BufferedReader br = null;
+      try {
+        InputStreamReader isr = new InputStreamReader(is);
+        br = new BufferedReader(isr);
+        String line;
+        if (type != null) {
+          while ((line = br.readLine()) != null) {
+            os.println(type + ">" + line);
+          }
+        } else {
+          while ((line = br.readLine()) != null) {
+            os.println(line);
+          }
+        }
+        br.close();
+        br = null;
+      } catch (IOException ioe) {
+        ioe.printStackTrace();
+      } finally {
+        closeStream(br);
+      }
+    }
   }
 }

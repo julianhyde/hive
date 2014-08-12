@@ -255,6 +255,8 @@ public class SqlLine implements Closeable {
           null),
       new ReflectiveCommandHandler(this, new String[] {"sql"},
           null),
+      new ReflectiveCommandHandler(this, new String[] {"sh"},
+          null),
       new ReflectiveCommandHandler(this, new String[] {"call"},
           null),
       new ReflectiveCommandHandler(this, new String[] {"nullemptystring"},
@@ -938,7 +940,9 @@ public class SqlLine implements Closeable {
         if (signalHandler != null) {
           signalHandler.setCallback(callback);
         }
-        dispatch(reader.readLine(getPrompt()), callback);
+        final String prompt = getPrompt();
+        final String line = reader.readLine(prompt);
+        dispatch(line, callback);
         if (saveHistory) {
           history.flush();
         }
