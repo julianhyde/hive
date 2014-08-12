@@ -502,7 +502,7 @@ public class SqlLineOpts implements Completer {
   public boolean getTruncateTable() {
     return truncateTable;
   }
-  
+
   public void setTruncateTable(boolean truncateTable) {
     this.truncateTable = truncateTable;
   }

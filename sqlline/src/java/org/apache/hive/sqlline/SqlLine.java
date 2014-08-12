@@ -1336,7 +1336,9 @@ public class SqlLine implements Closeable {
     if (url == null) {
       return "sqlline> ";
     } else {
-      return getPrompt(connections.getIndex() + ": " + url) + "> ";
+      String printClosed = databaseConnection.isClosed() ? " (closed)" : "";
+      return getPrompt(connections.getIndex() + ": " + url)
+          + printClosed + "> ";
     }
   }
 
