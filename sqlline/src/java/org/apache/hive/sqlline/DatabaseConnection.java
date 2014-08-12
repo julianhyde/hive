@@ -263,6 +263,10 @@ class DatabaseConnection {
     }
   }
 
+  public boolean isClosed() {
+    return connection == null;
+  }
+
   public String[] getTableNames(boolean force) {
     Schema.Table[] t = getSchema().getTables();
     Set<String> names = new TreeSet<String>();

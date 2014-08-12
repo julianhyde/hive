@@ -69,7 +69,7 @@ public class SqlLineTest {
     assertThat(
         checkScriptFile("show databases;\n",
             Arrays.asList("-d", "com.example.bad.Driver", "-u", JDBC_URL)),
-        contains("0: jdbc:hsqldb:mem:x> show databases;\n"
+        contains("0: jdbc:hsqldb:mem:x (closed)> show databases;\n"
             + "java.lang.ClassNotFoundException: com.example.bad.Driver\n"));
   }
 
@@ -81,7 +81,7 @@ public class SqlLineTest {
     assertThat(
         checkScriptFile("show databases;\n",
             Arrays.asList("-d", HSQLDB_JDBC_DRIVER, "-u", "notJdbc:fooBase:")),
-        contains("0: notJdbc:fooBase:> show databases;\n"
+        contains("0: notJdbc:fooBase: (closed)> show databases;\n"
             + "No known driver to handle \"notJdbc:fooBase:\". Searching for known drivers...\n"));
   }
 
@@ -734,6 +734,27 @@ public class SqlLineTest {
             + "| abcdefghij | abc |\n"
             + "+------------+-----+\n"
             + "0: jdbc:hsqldb:mem:x> \n"));
+  }
+
+  /** After closing a connection, prompt changes to "sqlline> ". */
+  @Test public void testPromptOnClosedConnection() throws Exception {
+    final List<String> argList = getBaseArgs(JDBC_URL);
+    assertThat(
+        checkScriptFile(
+            "values 1;\n"
+            + "!close\n"
+            + "values 2;\n",
+            argList),
+        equalTo(
+            "0: jdbc:hsqldb:mem:x> values 1;\n"
+            + "+-------------+\n"
+            + "|     C1      |\n"
+            + "+-------------+\n"
+            + "| 1           |\n"
+            + "+-------------+\n"
+            + "0: jdbc:hsqldb:mem:x> !close\n"
+            + "sqlline> values 2;\n"
+            + "No current connection\n\n"));
   }
 }
 
