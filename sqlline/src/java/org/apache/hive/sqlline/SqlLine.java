@@ -762,7 +762,7 @@ public class SqlLine implements Closeable {
     return KNOWN_DRIVERS;
   }
 
-  boolean initArgs(List<String> args) {
+  protected boolean initArgs(List<String> args) {
     final CommandLine cl;
 
     try {
@@ -1018,7 +1018,7 @@ public class SqlLine implements Closeable {
    *
    * @param line the command-line to dispatch
    */
-  void dispatch(String line, DispatchCallback callback) {
+  protected void dispatch(String line, DispatchCallback callback) {
     if (line == null) {
       // exit
       exit = true;

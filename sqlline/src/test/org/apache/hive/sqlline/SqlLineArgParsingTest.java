@@ -121,7 +121,7 @@ public class SqlLineArgParsingTest {
     }
 
     @Override
-    void dispatch(String command, DispatchCallback callback) {
+    protected void dispatch(String command, DispatchCallback callback) {
       String connectCommand = "!connect";
       String propertyCommand = "!property";
       if (command.startsWith(connectCommand)) {
