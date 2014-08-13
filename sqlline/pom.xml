@@ -45,6 +45,11 @@
       <artifactId>jline</artifactId>
       <version>${jline.sqlline.version}</version>
     </dependency>
+    <dependency>
+      <groupId>net.sf.supercsv</groupId>
+      <artifactId>super-csv</artifactId>
+      <version>${super-csv.version}</version>
+    </dependency>
     <!-- test intra-project (none) -->
     <!-- test inter-project -->
     <dependency>

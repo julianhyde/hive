@@ -46,6 +46,7 @@ public class SqlLineOpts implements Completer {
   public static final String DEFAULT_ISOLATION_LEVEL =
       "TRANSACTION_REPEATABLE_READ";
   public static final String DEFAULT_NULL_STRING = "NULL";
+  public static final char DEFAULT_DELIMITER_FOR_DSV = '|';
 
   private final SqlLine sqlLine;
   private boolean autosave = false;
@@ -73,6 +74,7 @@ public class SqlLineOpts implements Completer {
   private boolean allowMultiLineCommand = true;
   // This can be set for old behavior of nulls printed as empty strings
   private boolean nullEmptyString = false;
+  private char delimiterForDsv = DEFAULT_DELIMITER_FOR_DSV;
   private boolean truncateTable = false;
 
   private final File rcFile;
@@ -505,5 +507,13 @@ public class SqlLineOpts implements Completer {
 
   public void setTruncateTable(boolean truncateTable) {
     this.truncateTable = truncateTable;
+  }
+
+  public char getDelimiterForDsv() {
+    return delimiterForDsv;
+  }
+
+  public void setDelimiterForDsv(char delimiterForDsv) {
+    this.delimiterForDsv = delimiterForDsv;
   }
 }

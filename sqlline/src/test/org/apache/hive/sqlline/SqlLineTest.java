@@ -163,9 +163,9 @@ public class SqlLineTest {
     assertThat(
         checkScriptFile(
             "!set nullemptystring true\n"
-            + "select 'abc',null,'def' from (values 1);\n",
+            + "select 'abc',null,'d ef','g,h' from (values 1);\n",
             argList),
-        contains("'abc','','def'"));
+        contains("abc,,d ef,\"g,h\""));
   }
 
   /**
@@ -181,7 +181,42 @@ public class SqlLineTest {
     argList.add("--outputformat=csv");
     assertThat(
         checkScriptFile("select 'abc',null,'def' from (values 1);\n", argList),
-        contains("'abc','','def'"));
+        contains("abc,,def"));
+  }
+
+  /**
+   * Delimiter-separated format.
+   */
+  @Test
+  public void testDsv() throws Throwable {
+    List<String> argList = getBaseArgs(JDBC_URL);
+    argList.add("--outputformat=dsv");
+    argList.add("--delimiterForDsv=:");
+    assertThat(
+        checkScriptFile(
+            "select 'a|b c',null,'d:ef' from (values 1);\n",
+            argList),
+        contains(
+            "C1:C2:C3\n"
+                + "a|b c:NULL:\"d:ef\"\n"));
+  }
+
+  /**
+   * Delimiter-separated format with default delimiter and with null as empty
+   * string.
+   */
+  @Test
+  public void testDsvDefaultNullEmpty() throws Throwable {
+    List<String> argList = getBaseArgs(JDBC_URL);
+    argList.add("--outputformat=dsv");
+    argList.add("--nullemptystring=true");
+    assertThat(
+        checkScriptFile(
+            "select 'a|b c',null,'d:ef' from (values 1);\n",
+            argList),
+        contains(
+            "C1|C2|C3\n"
+            + "\"a|b c\"||d:ef\n"));
   }
 
   /**

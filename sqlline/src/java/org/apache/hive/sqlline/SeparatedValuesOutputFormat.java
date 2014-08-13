@@ -17,19 +17,25 @@
  */
 package org.apache.hive.sqlline;
 
+import java.io.IOException;
+import java.io.StringWriter;
+
+import org.supercsv.io.CsvListWriter;
+import org.supercsv.prefs.CsvPreference;
+
 /**
  * OutputFormat for values separated by a delimiter.
- *
- * <p><strong>TODO</strong>:
- * Handle character escaping
  */
 class SeparatedValuesOutputFormat implements OutputFormat {
   private final SqlLine sqlLine;
-  private char separator;
+  private final StringWriter strWriter = new StringWriter();
+  private final CsvListWriter writer;
 
-  public SeparatedValuesOutputFormat(SqlLine sqlLine, char separator) {
+  SeparatedValuesOutputFormat(SqlLine sqlLine, char separator) {
     this.sqlLine = sqlLine;
-    setSeparator(separator);
+    CsvPreference csvPreference =
+        new CsvPreference.Builder('"', separator, "").build();
+    this.writer = new CsvListWriter(strWriter, csvPreference);
   }
 
   public int print(Rows rows) {
@@ -42,22 +48,23 @@ class SeparatedValuesOutputFormat implements OutputFormat {
   }
 
   public void printRow(Rows rows, Rows.Row row) {
-    String[] vals = row.values;
-    StringBuilder buf = new StringBuilder();
-    for (int i = 0; i < vals.length; i++) {
-      buf.append(buf.length() == 0 ? "" : "" + getSeparator())
-          .append('\'')
-          .append(vals[i] == null ? "" : vals[i])
-          .append('\'');
+    String formattedStr = getFormattedStr(row.values);
+    sqlLine.output(formattedStr);
+  }
+
+  private String getFormattedStr(String[] vals) {
+    if (vals.length == 0) {
+      return "";
     }
-    sqlLine.output(buf.toString());
-  }
-
-  public void setSeparator(char separator) {
-    this.separator = separator;
-  }
-
-  public char getSeparator() {
-    return this.separator;
+    try {
+      writer.write(vals);
+      writer.flush();
+      final String s = strWriter.toString();
+      strWriter.getBuffer().setLength(0);
+      return s;
+    } catch (IOException e) {
+      sqlLine.error(e);
+      return "";
+    }
   }
 }

@@ -161,11 +161,13 @@ public class SqlLine implements Closeable {
   private final SqlLineSignalHandler signalHandler;
   private final Completer sqlLineCommandCompleter;
 
-  private final Map<String, Object> formats = map(
+  private final Map<String, OutputFormat> formats = map(
       "vertical", new VerticalOutputFormat(this),
       "table", new TableOutputFormat(this),
       "csv", new SeparatedValuesOutputFormat(this, ','),
       "tsv", new SeparatedValuesOutputFormat(this, '\t'),
+      "dsv", new SeparatedValuesOutputFormat(this,
+          SqlLineOpts.DEFAULT_DELIMITER_FOR_DSV),
       "xmlattr", new XmlAttributeOutputFormat(this),
       "xmlelements", new XmlElementOutputFormat(this));
 
@@ -1944,13 +1946,7 @@ public class SqlLine implements Closeable {
 
   int print(ResultSet rs, DispatchCallback callback) throws SQLException {
     final SqlLineOpts opts = getOpts();
-    String format = opts.getOutputFormat();
-    OutputFormat f = (OutputFormat) formats.get(format);
-
-    if (f == null) {
-      error(loc("unknown-format", format, formats.keySet()));
-      f = new TableOutputFormat(this);
-    }
+    final OutputFormat f = getOutputFormat(opts.getOutputFormat());
 
     Rows rows;
 
@@ -1960,6 +1956,22 @@ public class SqlLine implements Closeable {
       rows = new BufferedRows(this, rs);
     }
     return f.print(rows);
+  }
+
+  private OutputFormat getOutputFormat(String format) {
+    OutputFormat f = formats.get(format);
+    if (f == null) {
+      error(loc("unknown-format", format, formats.keySet()));
+      f = new TableOutputFormat(this);
+    }
+
+    // Create a SeparatedValuesOutputFormat with the right delimiter.
+    if (format.equals("dsv")) {
+      return new SeparatedValuesOutputFormat(this,
+          getOpts().getDelimiterForDsv());
+    }
+
+    return f;
   }
 
   Statement createStatement() throws SQLException {
