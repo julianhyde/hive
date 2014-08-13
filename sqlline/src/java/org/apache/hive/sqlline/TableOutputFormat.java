@@ -40,29 +40,38 @@ class TableOutputFormat implements OutputFormat {
     for (; rows.hasNext();) {
       Rows.Row row = rows.next();
       ColorBuffer cbuf = getOutputString(rows, row);
-      cbuf = cbuf.truncate(width);
+      if (sqlLine.getOpts().getTruncateTable()) {
+        cbuf = cbuf.truncate(width);
+      }
 
       if (index == 0)  {
         sb.setLength(0);
         for (int j = 0; j < row.sizes.length; j++) {
+          if (j > 0) {
+            sb.append("-+-");
+          }
           for (int k = 0; k < row.sizes[j]; k++) {
             sb.append('-');
           }
-          sb.append("-+-");
         }
 
         headerCols = cbuf;
         header = sqlLine.getColorBuffer()
-            .green(sb.toString())
-            .truncate(headerCols.getVisibleLength());
+            .green(sb.toString());
+        if (sqlLine.getOpts().getTruncateTable()) {
+          header = header.truncate(headerCols.getVisibleLength());
+        }
       }
 
-      if (index == 0
-          || (sqlLine.getOpts().getHeaderInterval() > 0
-              && index % sqlLine.getOpts().getHeaderInterval() == 0
-              && sqlLine.getOpts().getShowHeader())) {
-        printRow(header, true);
-        printRow(headerCols, false);
+      if (sqlLine.getOpts().getShowHeader()) {
+        if (index == 0
+            || (index - 1 > 0
+            && (index - 1) % sqlLine.getOpts().getHeaderInterval() == 0)) {
+          printRow(header, true);
+          printRow(headerCols, false);
+          printRow(header, true);
+        }
+      } else if (index == 0) {
         printRow(header, true);
       }
 
@@ -73,7 +82,7 @@ class TableOutputFormat implements OutputFormat {
       index++;
     }
 
-    if (header != null && sqlLine.getOpts().getShowHeader()) {
+    if (header != null) {
       printRow(header, true);
     }
 

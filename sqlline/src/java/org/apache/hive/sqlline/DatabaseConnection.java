@@ -24,8 +24,10 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
@@ -43,18 +45,32 @@ class DatabaseConnection {
   Quoting quoting;
   private final String driver;
   private final String url;
+
   private final String username;
   private final String password;
+
+  /** Extra properties for the connection. At connect time, sqlline constructs a
+   *  {@link Properties} object of:
+   *  <ul>
+   *  <li>info,
+   *  <li>("user", username) if username is set, and
+   *  <li>("password", password) if password is set
+   *  </ul>
+   *  and passes it to {@link Driver#connect(String, java.util.Properties)}. */
+  private final LinkedHashMap<String, String> info;
+
   private Schema schema = null;
   private Completer sqlCompleter = null;
 
   public DatabaseConnection(SqlLine sqlLine, String driver, String url,
-      String username, String password) throws SQLException {
+      Map<String, String> info, String username, String password)
+      throws SQLException {
     this.sqlLine = sqlLine;
     this.driver = driver;
     this.url = url;
     this.username = username;
     this.password = password;
+    this.info = new LinkedHashMap<String, String>(info);
   }
 
   @Override
@@ -168,21 +184,24 @@ class DatabaseConnection {
     final Properties info = new Properties();
     info.put("user", username);
     info.put("password", password);
+    for (Map.Entry<String, String> entry : this.info.entrySet()) {
+      info.put(entry.getKey(), entry.getValue());
+    }
     connection = theDriver.connect(url, info);
     meta = connection.getMetaData();
 
     try {
-      sqlLine.debug(sqlLine.loc("connected", new Object[] {
-          meta.getDatabaseProductName(),
-          meta.getDatabaseProductVersion()}));
+      sqlLine.debug(
+          sqlLine.loc("connected", meta.getDatabaseProductName(),
+              meta.getDatabaseProductVersion()));
     } catch (Exception e) {
       sqlLine.handleException(e);
     }
 
     try {
-      sqlLine.debug(sqlLine.loc("driver", new Object[] {
-          meta.getDriverName(),
-          meta.getDriverVersion()}));
+      sqlLine.debug(
+          sqlLine.loc("driver", meta.getDriverName(),
+              meta.getDriverVersion()));
     } catch (Exception e) {
       sqlLine.handleException(e);
     }
@@ -217,7 +236,9 @@ class DatabaseConnection {
     if (connection != null) {
       return connection;
     }
-    connect();
+    if (!connect()) {
+      throw new RuntimeException("Connection failed");
+    }
     return connection;
   }
 
@@ -240,6 +261,10 @@ class DatabaseConnection {
       setConnection(null);
       setDatabaseMetaData(null);
     }
+  }
+
+  public boolean isClosed() {
+    return connection == null;
   }
 
   public String[] getTableNames(boolean force) {

@@ -23,19 +23,24 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
+import java.util.Arrays;
 import java.util.Iterator;
 
 /**
  * Abstract base class representing a set of rows to be displayed.
+ *
+ * <p>Holds column values as strings.
  */
 abstract class Rows implements Iterator<Rows.Row> {
   protected final SqlLine sqlLine;
   final ResultSetMetaData rsMeta;
   final Boolean[] primaryKeys;
   final NumberFormat numberFormat;
+  private final String nullStr;
 
   Rows(SqlLine sqlLine, ResultSet rs) throws SQLException {
     this.sqlLine = sqlLine;
+    nullStr = sqlLine.getOpts().getNullString();
     rsMeta = rs.getMetaData();
     int count = rsMeta.getColumnCount();
     primaryKeys = new Boolean[count];
@@ -47,9 +52,7 @@ abstract class Rows implements Iterator<Rows.Row> {
   }
 
   @Override
-  public Row next() {
-    return null;
-  }
+  public abstract Row next();
 
   public void remove() {
     throw new UnsupportedOperationException();
@@ -154,23 +157,33 @@ abstract class Rows implements Iterator<Rows.Row> {
       }
 
       for (int i = 0; i < size; i++) {
+        String value;
         if (numberFormat != null) {
           Object o = rs.getObject(i + 1);
           if (o == null) {
-            values[i] = null;
+            value = null;
           } else if (o instanceof Number) {
-            values[i] = numberFormat.format(o);
+            value = numberFormat.format(o);
           } else {
-            values[i] = o.toString();
+            value = o.toString();
           }
         } else {
           // Use "getString" for Hive, "getObject" for other DBs.
-          values[i] = sqlLine.getOpts().isCautious()
+          value = sqlLine.getOpts().isCautious()
               ? rs.getString(i + 1)
               : String.valueOf(rs.getObject(i + 1));
         }
-        sizes[i] = (values[i] == null) ? 1 : values[i].length();
+        if (value == null || value.equals("null") && rs.wasNull()) {
+          value = nullStr;
+        }
+        values[i] = value;
+        sizes[i] = value.length();
       }
+    }
+
+    @Override
+    public String toString() {
+      return Arrays.toString(values);
     }
   }
 }

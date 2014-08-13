@@ -17,8 +17,10 @@
  */
 package org.apache.hive.sqlline;
 
+import java.io.Closeable;
 import java.io.EOFException;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
@@ -48,8 +50,8 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.ResourceBundle;
@@ -60,6 +62,12 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.GnuParser;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 
 import jline.Terminal;
 import jline.TerminalFactory;
@@ -72,8 +80,9 @@ import jline.console.history.FileHistory;
 
 /**
  * A console SQL shell with command completion.
- * <p>
- * TODO:
+ *
+ * <p>TODO:
+ *
  * <ul>
  * <li>User-friendly connection prompts</li>
  * <li>Page results</li>
@@ -85,8 +94,8 @@ import jline.console.history.FileHistory;
  * <li>XA transactions</li>
  * </ul>
  */
-public class SqlLine {
-  private static final ResourceBundle RESOURCE_BUNDLE =
+public class SqlLine implements Closeable {
+  protected static final ResourceBundle RESOURCE_BUNDLE =
       ResourceBundle.getBundle(SqlLine.class.getName());
 
   private static final String SEPARATOR = System.getProperty("line.separator");
@@ -119,7 +128,7 @@ public class SqlLine {
     "                        ",
   };
 
-  private static boolean initComplete = false;
+  private boolean initComplete = false;
 
   private final String defaultJdbcDriver;
   private final String defaultJdbcUrl;
@@ -138,14 +147,16 @@ public class SqlLine {
   private ConsoleReader consoleReader;
   private List<String> batch = null;
   private final Reflector reflector;
+  private final boolean saveHistory;
+  private FileHistory history;
+
+  private static final Options COMMAND_LINE_OPTIONS = createSqlLineOptions();
 
   // saveDir() is used in various opts that assume it's set. But that means
   // properties starting with "sqlline" are read into props in unspecific
   // order using reflection to find setter methods. Avoid
   // confusion/NullPointer due about order of config by prefixing it.
   public static final String SQLLINE_BASE_DIR = "x.sqlline.basedir";
-
-  static final Object[] EMPTY_OBJ_ARRAY = new Object[0];
 
   private final SqlLineSignalHandler signalHandler;
   private final Completer sqlLineCommandCompleter;
@@ -244,8 +255,12 @@ public class SqlLine {
           null),
       new ReflectiveCommandHandler(this, new String[] {"sql"},
           null),
+      new ReflectiveCommandHandler(this, new String[] {"sh"},
+          null),
       new ReflectiveCommandHandler(this, new String[] {"call"},
           null),
+      new ReflectiveCommandHandler(this, new String[] {"nullemptystring"},
+          new Completer[] {new BooleanCompleter()}),
     };
   }
 
@@ -344,10 +359,82 @@ public class SqlLine {
     try {
       Class.forName(testClass);
     } catch (Throwable t) {
-      String message =
-          locStatic(RESOURCE_BUNDLE, System.err, "jline-missing", testClass);
+      String message = locStatic(RESOURCE_BUNDLE, System.err, "jline-missing",
+          new Object[] {testClass});
       throw new ExceptionInInitializerError(message);
     }
+  }
+
+  @SuppressWarnings("AccessStaticViaInstance")
+  protected static Options createSqlLineOptions() {
+    final Options options = new Options();
+
+    // Synchronized prevents other threads building options using the same
+    // static workspace in OptionBuilder.
+    synchronized (OptionBuilder.class) {
+      // -d <driver class>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("driver class")
+          .withDescription("the driver class to use")
+          .create('d'));
+
+      // -u <database url>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("database url")
+          .withDescription("the JDBC URL to connect to")
+          .create('u'));
+
+      // -n <username>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("username")
+          .withDescription("the username to connect as")
+          .create('n'));
+
+      // -p <password>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("password")
+          .withDescription("the password to connect as")
+          .create('p'));
+
+      // -i <init file>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("init")
+          .withDescription("script file for initialization")
+          .create('i'));
+
+      // -e <query>
+      options.addOption(OptionBuilder
+          .hasArgs()
+          .withArgName("query")
+          .withDescription("query that should be executed")
+          .create('e'));
+
+      // -f <script file>
+      options.addOption(OptionBuilder
+          .hasArg()
+          .withArgName("script file")
+          .withDescription("script file that should be executed")
+          .create('f'));
+
+      // -r <spec file>
+      options.addOption(OptionBuilder
+          .hasArgs()
+          .withArgName("spec file")
+          .withDescription("connection specification file")
+          .create('r'));
+
+      // -help
+      options.addOption(OptionBuilder
+          .withLongOpt("help")
+          .withDescription("display this message")
+          .create('h'));
+    }
+    return options;
   }
 
   static Manifest getManifest() throws IOException {
@@ -383,20 +470,22 @@ public class SqlLine {
     }
   }
 
-    /** Returns the name of the application.
-     *
-     * <p>Default is built by substituting artifactId and version from
-     * pom.properties into a string, returning something like "sqlline
-     * version 1.6". Derived class may override. */
+  /** Returns the name of the application.
+   *
+   * <p>Default is built by substituting artifactId and version from
+   * pom.properties into a string, returning something like "sqlline
+   * version 1.6". Derived class may override. */
   protected String getApplicationTitle() {
-    InputStream inputStream =
-        getClass().getResourceAsStream(
-            "/META-INF/maven/sqlline/sqlline/pom.properties");
     Properties properties = new Properties();
     properties.put("artifactId", "sqlline");
     properties.put("version", "???");
+    InputStream inputStream =
+        getClass().getResourceAsStream(
+            "/META-INF/maven/org.apache.hive/hive-sqlline/pom.properties");
     try {
-      properties.load(inputStream);
+      if (inputStream != null) {
+        properties.load(inputStream);
+      }
     } catch (IOException e) {
       handleException(e);
     }
@@ -411,40 +500,40 @@ public class SqlLine {
     return getManifestAttribute("Implementation-Vendor");
   }
 
-  String loc(String res) {
-    return loc(res, EMPTY_OBJ_ARRAY);
+  /** Returns the resource bundle. */
+  protected ResourceBundle res() {
+    return RESOURCE_BUNDLE;
   }
 
-  String loc(String res, int param) {
+  /** Returns a localized message, using a choice format. */
+  String locChoice(String res, int param) {
     try {
       return MessageFormat.format(
-          new ChoiceFormat(RESOURCE_BUNDLE.getString(res)).format(param),
-          new Object[] {new Integer(param)});
+          new ChoiceFormat(res().getString(res)).format(param),
+          param);
     } catch (Exception e) {
       return res + ": " + param;
     }
   }
 
-  public String loc(String res, Object param1) {
-    return loc(res, new Object[] {param1});
+  /** Returns a localized message, with a variable number of arguments. */
+  public String loc(String res, Object... params) {
+    return locV(res, params);
   }
 
-  String loc(String res, Object param1, Object param2) {
-    return loc(res, new Object[] {param1, param2});
-  }
-
-  String loc(String res, Object[] params) {
-    return locStatic(RESOURCE_BUNDLE, getErrorStream(), res, params);
+  /** Returns a localized message, with an array of arguments. */
+  public String locV(String res, Object[] params) {
+    return locStatic(res(), getErrorStream(), res, params);
   }
 
   static String locStatic(ResourceBundle resourceBundle, PrintStream err,
-      String res, Object... params) {
+      String res, Object[] params) {
     try {
       return MessageFormat.format(resourceBundle.getString(res), params);
     } catch (Exception e) {
       e.printStackTrace(err);
       try {
-        return res + ": " + Arrays.asList(params);
+        return res + ": " + Arrays.toString(params);
       } catch (Exception e2) {
         return res;
       }
@@ -452,7 +541,7 @@ public class SqlLine {
   }
 
   protected String locElapsedTime(long milliseconds) {
-    return loc("time-ms", new Object[] {milliseconds / 1000d});
+    return loc("time-ms", milliseconds / 1000d);
   }
 
   /**
@@ -460,28 +549,30 @@ public class SqlLine {
    */
   public static void main(String[] args)
       throws IOException {
-    final SqlLine sqlLine = new SqlLine(false, null, null);
-    sqlLine.start2(Arrays.asList(args), null, true);
+    final SqlLine sqlLine = new SqlLine(false, true, null, null);
+    sqlLine.start2(Arrays.asList(args), null);
   }
 
   /**
    * Starts the program with redirected input. For redirected output,
-   * System.setOut and System.setErr can be used, but System.setIn will not
-   * work.
+   * setOutputStream() and setErrorStream can be used.
    *
    * @param args        same as main()
    * @param inputStream redirected input, or null to use standard input
+   * @return Status code, never null
    */
-  public static boolean mainWithInputRedirection(
+  public static Status mainWithInputRedirection(
       String[] args,
       InputStream inputStream)
       throws IOException {
-    final SqlLine sqlLine = new SqlLine(false, null, null);
-    return sqlLine.start2(Arrays.asList(args), inputStream, false);
+    final SqlLine sqlLine = new SqlLine(false, false, null, null);
+    return sqlLine.start2(Arrays.asList(args), inputStream);
   }
 
-  protected SqlLine(boolean withSignalHandler, String defaultJdbcDriver,
+  protected SqlLine(boolean withSignalHandler, boolean saveHistory,
+      String defaultJdbcDriver,
       String defaultJdbcUrl) {
+    this.saveHistory = saveHistory;
     this.defaultJdbcDriver = defaultJdbcDriver;
     this.defaultJdbcUrl = defaultJdbcUrl;
     this.opts = createOpts();
@@ -521,28 +612,28 @@ public class SqlLine {
    * @param saveHistory whether or not the commands issued will be saved to
    *                    sqlline's history file
    * @throws IOException
+   * @return 0 on success, 1 on invalid arguments, and 2 on any other error
    */
-  public static boolean start(
+  public static Status start(
       String[] args,
       InputStream inputStream,
       boolean saveHistory) throws IOException {
-    return new SqlLine(false, null, null)
-        .start2(Arrays.asList(args), inputStream, saveHistory);
+    return new SqlLine(false, saveHistory, null, null)
+        .start2(Arrays.asList(args), inputStream);
   }
 
-  protected boolean start2(
+  protected Status start2(
       List<String> args,
-      InputStream inputStream,
-      boolean saveHistory) throws IOException {
-    boolean retVal = begin(args, inputStream, saveHistory);
+      InputStream inputStream) throws IOException {
+    Status status = begin(args, inputStream);
 
     // exit the system: useful for Hypersonic and other
     // badly-behaving systems
     if (!Boolean.getBoolean(SqlLineOpts.PROPERTY_NAME_EXIT)) {
-      System.exit(retVal ? 1 : 0);
+      System.exit(status.ordinal());
     }
 
-    return retVal;
+    return status;
   }
 
   DatabaseConnection getDatabaseConnection() {
@@ -672,54 +763,41 @@ public class SqlLine {
   }
 
   boolean initArgs(List<String> args) {
-    List<String> commands = new LinkedList<String>();
-    List<String> files = new LinkedList<String>();
-    String driver = null;
-    String user = null;
-    String pass = null;
-    String url = null;
+    final CommandLine cl;
 
-    for (int i = 0; i < args.size(); i++) {
-      final String arg = args.get(i);
-      if (arg.equals("--help") || arg.equals("-h")) {
-        usage();
-        return false;
-      }
-
-      // -- arguments are treated as properties
-      if (arg.startsWith("--")) {
-        List<String> parts = split(arg.substring(2), "=");
-        debug(loc("setting-prop", parts));
-        if (parts.size() > 0) {
-          boolean ret;
-
-          if (parts.size() >= 2) {
-            ret = getOpts().set(parts.get(0), parts.get(1), true);
-          } else {
-            ret = getOpts().set(parts.get(0), "true", true);
-          }
-
-          if (!ret) {
-            return false;
-          }
-        }
-        continue;
-      }
-
-      if (arg.equals("-d")) {
-        driver = args.get(++i);
-      } else if (arg.equals("-n")) {
-        user = args.get(++i);
-      } else if (arg.equals("-p")) {
-        pass = args.get(++i);
-      } else if (arg.equals("-u")) {
-        url = args.get(++i);
-      } else if (arg.equals("-e")) {
-        commands.add(args.get(++i));
-      } else {
-        files.add(arg);
-      }
+    try {
+      final CommandLineParser parser = new CommandLineParser();
+      final String[] argArray = args.toArray(new String[args.size()]);
+      cl = parser.parse(getCommandLineOptions(), argArray);
+    } catch (ParseException e1) {
+      output(e1.getMessage());
+      return false;
     }
+
+    if (cl.hasOption("help")) {
+      // Return false here, so usage will be printed.
+      return false;
+    }
+
+    String driver = cl.getOptionValue("d");
+    final String user = cl.getOptionValue("n");
+    final String pass = cl.getOptionValue("p");
+    String url = cl.getOptionValue("u");
+    getOpts().setInitFile(cl.getOptionValue("i"));
+    getOpts().setScriptFile(cl.getOptionValue("f"));
+    final List<String> commands;
+    if (cl.getOptionValues('e') != null) {
+      commands = Arrays.asList(cl.getOptionValues('e'));
+    } else {
+      commands = Collections.emptyList();
+    }
+    final List<String> files;
+    if (cl.getOptionValues('r') != null) {
+      files = Arrays.asList(cl.getOptionValues('r'));
+    } else {
+      files = Collections.emptyList();
+    }
+    assignOptions(cl);
 
     if (url == null) {
       url = defaultJdbcUrl;
@@ -764,15 +842,31 @@ public class SqlLine {
     return true;
   }
 
+  /** Returns the options allowed for command-line arguments.
+   * Derived class may override. */
+  protected Options getCommandLineOptions() {
+    return COMMAND_LINE_OPTIONS;
+  }
+
+  /** Returns whether an argument is handled explicitly. If not, it will be
+   * used to set a property. */
+  protected boolean isSpecialArg(String arg) {
+    return arg.equals("--help");
+  }
+
+  /** Processes options parsed from command-line arguments.
+   * Derived class may override. */
+  protected void assignOptions(CommandLine cl) {
+  }
+
   /**
    * Starts accepting input from an input stream, and dispatches commands from
    * that input to the appropriate {@link CommandHandler} until the global
    * variable <code>exit</code> is true.
    *
-   * @return Whether successful
+   * @return 0 on success, 1 on invalid arguments, and 2 on any other error
    */
-  public boolean begin(List<String> args, InputStream inputStream,
-      boolean saveHistory)
+  public Status begin(List<String> args, InputStream inputStream)
       throws IOException {
     try {
       // load the options first, so we can override on the command line
@@ -781,36 +875,84 @@ public class SqlLine {
       handleException(e);
     }
 
-    FileHistory fileHistory =
-        new FileHistory(new File(opts.getHistoryFile()));
-    ConsoleReader reader = getConsoleReader(inputStream, fileHistory);
-    if (!initArgs(args)) {
-      usage();
-      return false;
-    }
+    history = new FileHistory(new File(opts.getHistoryFile()));
 
+    final DispatchCallback callback = new DispatchCallback();
     try {
-      info(getApplicationTitle());
-    } catch (Exception e) {
-      handleException(e);
-    }
+      if (!initArgs(args)) {
+        usage();
+        return Status.ARGS;
+      }
 
-    // basic setup done. From this point on, honor opts value for showing
-    // exception
-    initComplete = true;
-    DispatchCallback callback = new DispatchCallback();
+      // Basic setup done. From this point on, honor opts value for showing
+      // exception.
+      initComplete = true;
+
+      if (getOpts().getScriptFile() != null) {
+        return executeFile(getOpts().getScriptFile(), callback);
+      }
+      try {
+        info(getApplicationTitle());
+      } catch (Exception e) {
+        handleException(e);
+      }
+      ConsoleReader reader = getConsoleReader(inputStream, history);
+      return execute(reader, callback, false);
+    } finally {
+      close();
+    }
+  }
+
+  Status runInit(DispatchCallback callback) {
+    String initFile = getOpts().getInitFile();
+    if (initFile != null) {
+      info("Running init script " + initFile);
+      try {
+        return executeFile(initFile, callback);
+      } finally {
+        exit = false;
+      }
+    }
+    return Status.OK;
+  }
+
+  private Status executeFile(String fileName, DispatchCallback callback) {
+    FileInputStream initStream = null;
+    try {
+      initStream = new FileInputStream(fileName);
+      return execute(getConsoleReader(initStream, history), callback, true);
+    } catch (Throwable t) {
+      handleException(t);
+      return Status.OTHER;
+    } finally {
+      Commands.closeStream(initStream);
+      consoleReader = null;
+      output("");   // dummy new line
+    }
+  }
+
+  private Status execute(ConsoleReader reader, DispatchCallback callback,
+      boolean exitOnError) {
     while (!exit) {
       try {
+        // Execute one instruction; terminate on executing a script if there is
+        // an error.
         if (signalHandler != null) {
           signalHandler.setCallback(callback);
         }
-        dispatch(reader.readLine(getPrompt()), callback);
+        final String prompt = getPrompt();
+        final String line = reader.readLine(prompt);
+        dispatch(line, callback);
         if (saveHistory) {
-          fileHistory.flush();
+          history.flush();
         }
-      } catch (EOFException eof) {
-        // CTRL-D
-        commands.quit(null, callback);
+        if (exitOnError && callback.isFailure()) {
+          commands.quit(null, callback);
+          return Status.OTHER;
+        }
+      } catch (EOFException e) {
+        setExit(true);  // CTRL-D
+        return Status.OK;
       } catch (UserInterruptException ioe) {
         // CTRL-C
         try {
@@ -822,19 +964,15 @@ public class SqlLine {
         }
       } catch (Throwable t) {
         handleException(t);
-        callback.setToFailure();
+        return Status.OTHER;
       }
     }
-    // ### NOTE jvs 10-Aug-2004: Clean up any outstanding
-    // connections automatically.
-    // nothing is done with the callback beyond
-    commands.closeall(null, new DispatchCallback());
-    return callback.isSuccess();
+    return Status.OK;
   }
 
+  @Override
   public void close() {
     final DispatchCallback callback = new DispatchCallback();
-    commands.quit(null, callback);
     commands.closeall(null, callback);
   }
 
@@ -855,13 +993,16 @@ public class SqlLine {
     }
     if (inputStream != null) {
       // ### NOTE:  fix for sf.net bug 879425.
-      consoleReader = new ConsoleReader(inputStream, System.out);
+      consoleReader = new ConsoleReader(inputStream, outputStream);
     } else {
       consoleReader = new ConsoleReader();
     }
 
-    consoleReader.addCompleter(new SqlLineCompleter(this));
-    consoleReader.setHistory(fileHistory);
+    // If reading from script, no need to load history and no need of completer.
+    if (!(inputStream instanceof FileInputStream)) {
+      consoleReader.addCompleter(new SqlLineCompleter(this));
+      consoleReader.setHistory(fileHistory);
+    }
     consoleReader.setHandleUserInterrupt(true); // CTRL-C handling
     consoleReader.setExpandEvents(false);
 
@@ -910,20 +1051,34 @@ public class SqlLine {
       for (CommandHandler commandHandler : commandHandlers) {
         String match = commandHandler.matches(line);
         if (match != null) {
-          cmdMap.put(match, commandHandler);
+          CommandHandler prev = cmdMap.put(match, commandHandler);
+          if (prev != null) {
+            callback.setStatus(DispatchCallback.Status.FAILURE);
+            error(loc("multiple-matches", commandHandler.getName()));
+          }
         }
       }
 
-      if (cmdMap.size() == 0) {
+      final CommandHandler handler;
+      switch (cmdMap.size()) {
+      case 0:
         callback.setStatus(DispatchCallback.Status.FAILURE);
         error(loc("unknown-command", line));
-      } else if (cmdMap.size() > 1) {
-        callback.setStatus(DispatchCallback.Status.FAILURE);
-        error(loc("multiple-matches", cmdMap.keySet().toString()));
-      } else {
+        return;
+      case 1:
         callback.setStatus(DispatchCallback.Status.RUNNING);
-        final CommandHandler commandHandler = cmdMap.values().iterator().next();
-        commandHandler.execute(line, callback);
+        handler = cmdMap.values().iterator().next();
+        handler.execute(line, callback);
+        return;
+      default:
+        // Multiple matches. If there is an exact match, it wins.
+        handler = cmdMap.get(line);
+        if (handler != null) {
+          handler.execute(line, callback);
+        } else {
+          error(loc("multiple-matches", cmdMap.keySet().toString()));
+        }
+        return;
       }
     } else {
       callback.setStatus(DispatchCallback.Status.RUNNING);
@@ -960,6 +1115,11 @@ public class SqlLine {
     if (trimmed.length() == 0) {
       return false;
     }
+
+    if (!getOpts().isAllowMultiLineCommand()) {
+      return false;
+    }
+
     return !trimmed.endsWith(";");
   }
 
@@ -982,7 +1142,8 @@ public class SqlLine {
   boolean isComment(String line) {
     // SQL92 comment prefix is "--"
     // sqlline also supports shell-style "#" prefix
-    return line.startsWith("#") || line.startsWith("--");
+    String lineTrimmed = line.trim();
+    return lineTrimmed.startsWith("#") || lineTrimmed.startsWith("--");
   }
 
   /**
@@ -1175,7 +1336,9 @@ public class SqlLine {
     if (url == null) {
       return "sqlline> ";
     } else {
-      return getPrompt(connections.getIndex() + ": " + url) + "> ";
+      String printClosed = databaseConnection.isClosed() ? " (closed)" : "";
+      return getPrompt(connections.getIndex() + ": " + url)
+          + printClosed + "> ";
     }
   }
 
@@ -1480,7 +1643,7 @@ public class SqlLine {
     return str;
   }
 
-  List<String> split(String line, String delim) {
+  protected List<String> split(String line, String delim) {
     final List<String> list = new ArrayList<String>();
     for (String t : tokenize(line, delim)) {
       list.add(dequote(t));
@@ -1625,6 +1788,8 @@ public class SqlLine {
 
     if (e instanceof SQLException) {
       handleSQLException((SQLException) e);
+    } else if (e instanceof EOFException) {
+      setExit(true);  // CTRL-D
     } else if (!initComplete && !getOpts().getVerbose()) {
       // all init errors must be verbose
       if (e.getMessage() == null) {
@@ -1651,13 +1816,10 @@ public class SqlLine {
     String type = (e instanceof SQLWarning) ? loc("Warning") : loc("Error");
 
     error(
-        loc(
-            (e instanceof SQLWarning) ? "Warning" : "Error",
-            new Object[] {
-              (e.getMessage() == null) ? "" : e.getMessage().trim(),
-              (e.getSQLState() == null) ? "" : e.getSQLState().trim(),
-              e.getErrorCode()
-            }));
+        loc((e instanceof SQLWarning) ? "Warning" : "Error",
+            (e.getMessage() == null) ? "" : e.getMessage().trim(),
+            (e.getSQLState() == null) ? "" : e.getSQLState().trim(),
+            e.getErrorCode()));
 
     if (verbose) {
       e.printStackTrace(getErrorStream());
@@ -1786,7 +1948,7 @@ public class SqlLine {
     OutputFormat f = (OutputFormat) formats.get(format);
 
     if (f == null) {
-      error(loc("unknown-format", new Object[] {format, formats.keySet()}));
+      error(loc("unknown-format", format, formats.keySet()));
       f = new TableOutputFormat(this);
     }
 
@@ -2012,6 +2174,50 @@ public class SqlLine {
 
   public Completer getCommandCompleter() {
     return sqlLineCommandCompleter;
+  }
+
+  /** Modifies a the URL of a JDBC connection, just before the connection is
+   * made.
+   *
+   * <p>This is an opportunity to append connection-specific variables to the
+   * URL, and to add properties to the {@code info} map.
+   *
+   * <p>The default implementation does not modify the map, and returns the URL
+   * unchanged.</p>
+   */
+  public String fixUpUrl(String url, Map<String, String> info) {
+    return url;
+  }
+
+  /** Exit status returned to the operating system. OK, ARGS, OTHER
+   * correspond to 0, 1, 2. */
+  public enum Status {
+    /** Success. */
+    OK,
+    /** Arguments are invalid. */
+    ARGS,
+    /** Any other error besides arguments. */
+    OTHER
+  }
+
+  /** Command-line parser. */
+  private class CommandLineParser extends GnuParser {
+    @Override
+    protected void processOption(final String arg, final ListIterator iter)
+        throws ParseException {
+      if (arg.startsWith("--") && !isSpecialArg(arg)) {
+        String stripped = arg.substring(2, arg.length());
+        List<String> parts = split(stripped, "=");
+        debug(loc("setting-prop", parts));
+        if (parts.size() >= 2) {
+          getOpts().set(parts.get(0), parts.get(1), true);
+        } else {
+          getOpts().set(parts.get(0), "true", true);
+        }
+      } else {
+        super.processOption(arg, iter);
+      }
+    }
   }
 }
 

@@ -25,6 +25,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +45,7 @@ public class SqlLineOpts implements Completer {
       PROPERTY_PREFIX + "system.exit";
   public static final String DEFAULT_ISOLATION_LEVEL =
       "TRANSACTION_REPEATABLE_READ";
+  public static final String DEFAULT_NULL_STRING = "NULL";
 
   private final SqlLine sqlLine;
   private boolean autosave = false;
@@ -67,11 +70,16 @@ public class SqlLineOpts implements Completer {
   private String isolation = DEFAULT_ISOLATION_LEVEL;
   private String outputFormat = "table";
   private boolean trimScripts = true;
+  private boolean allowMultiLineCommand = true;
+  // This can be set for old behavior of nulls printed as empty strings
+  private boolean nullEmptyString = false;
+  private boolean truncateTable = false;
 
   private final File rcFile;
   private String historyFile;
-
   private String runFile;
+  private String initFile;
+  private String scriptFile;
 
   public SqlLineOpts(SqlLine sqlLine, Properties props, String propFileName,
       String rcfilePropName) {
@@ -119,7 +127,7 @@ public class SqlLineOpts implements Completer {
     try {
       return new StringsCompleter(propertyNames())
           .complete(buf, pos, candidates);
-    } catch (Throwable t) {
+    } catch (Exception t) {
       return -1;
     }
   }
@@ -145,24 +153,40 @@ public class SqlLineOpts implements Completer {
   SortedSet<String> propertyNames()
       throws IllegalAccessException, InvocationTargetException {
     TreeSet<String> names = new TreeSet<String>();
-
-    // get all the values from getXXX methods
-    Method[] m = getClass().getDeclaredMethods();
-    for (int i = 0; m != null && i < m.length; i++) {
-      if (!(m[i].getName().startsWith("get"))) {
-        continue;
-      }
-      if (m[i].getParameterTypes().length != 0) {
-        continue;
-      }
-      String propName = m[i].getName().substring(3).toLowerCase();
-      if (propName.equals("run")) {
-        // Not a real property
-        continue;
-      }
-      names.add(propName);
+    for (Method method : propertyMethods()) {
+      names.add(propertyName(method));
     }
     return names;
+  }
+
+  /** Returns the property that is retrieved by a given method, removing the
+   * "is" or "get" prefix from the method name. Returns null if it is not a
+   * property method. */
+  private String propertyName(Method method) {
+    if (method.getParameterTypes().length != 0) {
+      return null;
+    }
+    final String name = method.getName();
+    // "run" is not a real property
+    if (name.startsWith("get") && !name.equals("getRun")) {
+      return name.substring(3).toLowerCase();
+    }
+    if (name.startsWith("is")) {
+      return name.substring(2).toLowerCase();
+    }
+    return null;
+  }
+
+  List<Method> propertyMethods()
+      throws IllegalAccessException, InvocationTargetException {
+    // get all the values from getXXX and isXXX methods
+    final List<Method> methods = new ArrayList<Method>();
+    for (final Method method : getClass().getDeclaredMethods()) {
+      if (propertyName(method) != null) {
+        methods.add(method);
+      }
+    }
+    return methods;
   }
 
   public Properties toProperties()
@@ -179,10 +203,12 @@ public class SqlLineOpts implements Completer {
       throws IllegalAccessException, InvocationTargetException,
       ClassNotFoundException {
     Map<String, String> map = new LinkedHashMap<String, String>();
-    for (String name : propertyNames()) {
-      map.put(PROPERTY_PREFIX + name,
-          sqlLine.getReflector().invoke(this, "get" + name, new Object[0])
-              .toString());
+    for (Method method : propertyMethods()) {
+      final Object o = sqlLine.getReflector().invoke(this, method.getName(),
+          Collections.emptyList());
+      if (o != null) {
+        map.put(PROPERTY_PREFIX + propertyName(method), o.toString());
+      }
     }
     sqlLine.debug("properties: " + map.toString());
     return map;
@@ -227,7 +253,7 @@ public class SqlLineOpts implements Completer {
       return true;
     } catch (Exception e) {
       if (!quiet) {
-        sqlLine.error(sqlLine.loc("error-setting", new Object[]{key, e}));
+        sqlLine.error(sqlLine.loc("error-setting", key, e));
       }
       return false;
     }
@@ -337,6 +363,22 @@ public class SqlLineOpts implements Completer {
     return this.historyFile;
   }
 
+  public void setScriptFile(String scriptFile) {
+    this.scriptFile = scriptFile;
+  }
+
+  public String getScriptFile() {
+    return scriptFile;
+  }
+
+  public String getInitFile() {
+    return initFile;
+  }
+
+  public void setInitFile(String initFile) {
+    this.initFile = initFile;
+  }
+
   public void setColor(boolean color) {
     this.color = color;
   }
@@ -431,5 +473,37 @@ public class SqlLineOpts implements Completer {
 
   public boolean isCautious() {
     return false;
+  }
+
+  public boolean isAllowMultiLineCommand() {
+    return allowMultiLineCommand;
+  }
+
+  public void setAllowMultiLineCommand(boolean allowMultiLineCommand) {
+    this.allowMultiLineCommand = allowMultiLineCommand;
+  }
+
+  /**
+   * Use getNullString() to get the null string to be used.
+   * @return true if null representation should be an empty string
+   */
+  public boolean getNullEmptyString() {
+    return nullEmptyString;
+  }
+
+  public void setNullEmptyString(boolean nullStringEmpty) {
+    this.nullEmptyString = nullStringEmpty;
+  }
+
+  public String getNullString() {
+    return nullEmptyString ? "" : DEFAULT_NULL_STRING;
+  }
+
+  public boolean getTruncateTable() {
+    return truncateTable;
+  }
+
+  public void setTruncateTable(boolean truncateTable) {
+    this.truncateTable = truncateTable;
   }
 }

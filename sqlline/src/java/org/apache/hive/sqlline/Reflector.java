@@ -58,8 +58,8 @@ class Reflector {
     }
 
     if (candidateMethods.size() == 0) {
-      throw new IllegalArgumentException(sqlLine.loc("no-method",
-          new Object[] {method, c.getName()}));
+      throw new IllegalArgumentException(
+          sqlLine.loc("no-method", method, c.getName()));
     }
 
     for (Method candidateMethod : candidateMethods) {

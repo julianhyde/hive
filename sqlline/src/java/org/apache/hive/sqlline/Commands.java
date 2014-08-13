@@ -18,11 +18,13 @@
 package org.apache.hive.sqlline;
 
 import java.io.BufferedReader;
+import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PrintStream;
 import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -34,6 +36,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -211,6 +214,10 @@ public class Commands {
   }
 
   public void metadata(String cmd, List argList, DispatchCallback callback) {
+    if (!sqlLine.assertConnection()) {
+      callback.setToFailure();
+      return;
+    }
     try {
       final DatabaseMetaData metaData = sqlLine.getDatabaseMetaData();
       final Set<String> methodNames = new TreeSet<String>();
@@ -273,8 +280,8 @@ public class Commands {
       if (def != null) {
         return def;
       }
-      throw new IllegalArgumentException(sqlLine.loc("arg-usage",
-          new Object[] {ret.get(0), paramname}));
+      throw new IllegalArgumentException(
+          sqlLine.loc("arg-usage", ret.get(0), paramname));
     }
     return ret.get(1);
   }
@@ -307,8 +314,9 @@ public class Commands {
     String[] compound;
     if (ret == null || ret.length != 2) {
       if (defaultValues[defaultValues.length - 1] == null) {
-        throw new IllegalArgumentException(sqlLine.loc("arg-usage",
-            new Object[] {ret.length == 0 ? "" : ret[0][0], paramName}));
+        throw new IllegalArgumentException(
+            sqlLine.loc("arg-usage", ret.length == 0 ? "" : ret[0][0],
+                paramName));
       }
       compound = new String[0];
     } else {
@@ -384,7 +392,7 @@ public class Commands {
     if (sql.startsWith("native")) {
       sql = sql.substring("native".length() + 1);
     }
-    String nat = sqlLine.getDatabaseConnection().getConnection().nativeSQL(sql);
+    String nat = sqlLine.getConnection().nativeSQL(sql);
     sqlLine.output(nat);
     callback.setToSuccess();
   }
@@ -468,7 +476,7 @@ public class Commands {
     }
 
     sqlLine.info(
-        sqlLine.loc("drivers-found-count", sqlLine.getDrivers().size()));
+        sqlLine.locChoice("drivers-found-count", sqlLine.getDrivers().size()));
 
     // unique the list
     for (Driver driver : sqlLine.getDrivers()) {
@@ -770,6 +778,36 @@ public class Commands {
     execute(line, false, callback);
   }
 
+  public void sh(String line, DispatchCallback callback) {
+    if (!line.startsWith("sh")) {
+      callback.setToFailure();
+      return;
+    }
+
+    line = line.substring("sh".length()).trim();
+
+    if (line.length() == 0) {
+      callback.setToFailure();
+      return;
+    }
+    try {
+      ShellCmdExecutor executor =
+          new ShellCmdExecutor(line, sqlLine.getOutputStream(),
+              sqlLine.getErrorStream());
+      int ret = executor.execute();
+      if (ret != 0) {
+        sqlLine.output("Command failed with exit code = " + ret);
+        callback.setToFailure();
+      } else {
+        callback.setToSuccess();
+      }
+    } catch (Exception e) {
+      callback.setToFailure();
+      sqlLine.error("Exception raised from Shell command " + e);
+      sqlLine.error(e);
+    }
+  }
+
   public void call(String line, DispatchCallback callback) {
     execute(line, true, callback);
   }
@@ -788,7 +826,8 @@ public class Commands {
 
     // use multiple lines for statements not terminated by ";"
     try {
-      while (!(line.trim().endsWith(";"))) {
+      while (!line.trim().endsWith(";")
+          && sqlLine.getOpts().isAllowMultiLineCommand()) {
         StringBuilder prompt = new StringBuilder(sqlLine.getPrompt());
         for (int i = 0; i < prompt.length() - 1; i++) {
           if (prompt.charAt(i) != '>') {
@@ -872,7 +911,8 @@ public class Commands {
               int count = sqlLine.print(rs, callback);
               long end = System.currentTimeMillis();
 
-              reportResult(sqlLine.loc("rows-selected", count), start, end);
+              reportResult(sqlLine.locChoice("rows-selected", count), start,
+                  end);
             } finally {
               rs.close();
             }
@@ -880,7 +920,7 @@ public class Commands {
         } else {
           int count = stmnt.getUpdateCount();
           long end = System.currentTimeMillis();
-          reportResult(sqlLine.loc("rows-affected", count), start, end);
+          reportResult(sqlLine.locChoice("rows-affected", count), start, end);
         }
       } finally {
         if (stmnt != null) {
@@ -928,16 +968,18 @@ public class Commands {
    * Close the current connection.
    */
   public void close(String line, DispatchCallback callback) {
-    if (sqlLine.getDatabaseConnection() == null) {
+    final DatabaseConnection databaseConnection =
+        sqlLine.getDatabaseConnection();
+    if (databaseConnection == null) {
       callback.setToFailure();
       return;
     }
 
     try {
-      final Connection connection =
-          sqlLine.getDatabaseConnection().getConnection();
+      final Connection connection = databaseConnection.getConnection();
       if (connection != null && !connection.isClosed()) {
-        sqlLine.info(sqlLine.loc("closing", connection.getClass().getName()));
+        int index = sqlLine.getDatabaseConnections().getIndex();
+        sqlLine.info(sqlLine.loc("closing", index, databaseConnection));
         connection.close();
       } else {
         sqlLine.info(sqlLine.loc("already-closed"));
@@ -971,7 +1013,13 @@ public class Commands {
 
     for (int i = 1; i < parts.size(); i++) {
       Properties props = new Properties();
-      props.load(new FileInputStream(parts.get(i)));
+      InputStream stream = new FileInputStream(parts.get(i));
+      try {
+        props.load(stream);
+      } finally {
+        closeStream(stream);
+      }
+
       connect(props, callback);
       if (callback.isSuccess()) {
         successes++;
@@ -982,6 +1030,16 @@ public class Commands {
       callback.setToFailure();
     } else {
       callback.setToSuccess();
+    }
+  }
+
+  static void closeStream(Closeable stream) {
+    try {
+      if (stream != null) {
+        stream.close();
+      }
+    } catch (IOException e) {
+      // ignore
     }
   }
 
@@ -1075,10 +1133,13 @@ public class Commands {
     }
 
     try {
+      final Map<String, String> info = new LinkedHashMap<String, String>();
+      final String url2 = sqlLine.fixUpUrl(url, info);
       sqlLine.getDatabaseConnections().setConnection(
-          new DatabaseConnection(sqlLine, driver, url, username, password));
+          new DatabaseConnection(sqlLine, driver, url2, info,
+              username, password));
       sqlLine.getDatabaseConnection().getConnection();
-
+      sqlLine.runInit(callback);
       sqlLine.setCompletions();
       callback.setToSuccess();
     } catch (Exception e) {
@@ -1113,7 +1174,8 @@ public class Commands {
     int index = 0;
     final DatabaseConnections databaseConnections =
         sqlLine.getDatabaseConnections();
-    sqlLine.info(sqlLine.loc("active-connections", databaseConnections.size()));
+    sqlLine.info(sqlLine.locChoice("active-connections",
+        databaseConnections.size()));
 
     for (DatabaseConnection c : databaseConnections) {
       boolean closed;
@@ -1325,8 +1387,8 @@ public class Commands {
     } catch (Exception e) {
       sqlLine.handleException(e);
     }
-    sqlLine.output(sqlLine.loc("record-closed", sqlLine.getRecordOutputFile()));
     sqlLine.setRecordOutputFile(null);
+    sqlLine.output(sqlLine.loc("record-closed", sqlLine.getRecordOutputFile()));
     callback.setToSuccess();
   }
 
@@ -1348,9 +1410,9 @@ public class Commands {
     }
 
     try {
-      sqlLine.setRecordOutputFile(new OutputFile(parts.get(1)));
-      sqlLine.output(
-          sqlLine.loc("record-started", sqlLine.getRecordOutputFile()));
+      final OutputFile recordOutput = new OutputFile(parts.get(1));
+      sqlLine.output(sqlLine.loc("record-started", recordOutput));
+      sqlLine.setRecordOutputFile(recordOutput);
       callback.setToSuccess();
     } catch (Exception e) {
       callback.setToFailure();
@@ -1434,5 +1496,83 @@ public class Commands {
     breader.close();
 
     callback.setToSuccess();
+  }
+
+  public void nullemptystring(String line, DispatchCallback callback) {
+    // "nullemptystring foo" becomes "set nullemptystring foo"
+    set("set " + line, callback);
+  }
+
+  /** Executes an operating system command, and deals with stdout and stderr.
+   *
+   * <p>Copied from org.apache.hadoop.hive.common.cli. */
+  private static class ShellCmdExecutor {
+    private String cmd;
+    private PrintStream out;
+    private PrintStream err;
+
+    public ShellCmdExecutor(String cmd, PrintStream out, PrintStream err) {
+      this.cmd = cmd;
+      this.out = out;
+      this.err = err;
+    }
+
+    public int execute() throws Exception {
+      try {
+        Process executor = Runtime.getRuntime().exec(cmd);
+        StreamPrinter outPrinter =
+            new StreamPrinter(executor.getInputStream(), null, out);
+        StreamPrinter errPrinter =
+            new StreamPrinter(executor.getErrorStream(), null, err);
+
+        outPrinter.start();
+        errPrinter.start();
+
+        int ret = executor.waitFor();
+        outPrinter.join();
+        errPrinter.join();
+        return ret;
+      } catch (IOException ex) {
+        throw new Exception("Failed to execute " + cmd, ex);
+      }
+    }
+  }
+
+  /** Copied from org.apache.hive.common.util. */
+  private static class StreamPrinter extends Thread {
+    final InputStream is;
+    final String type;
+    final PrintStream os;
+
+    public StreamPrinter(InputStream is, String type, PrintStream os) {
+      this.is = is;
+      this.type = type;
+      this.os = os;
+    }
+
+    @Override
+    public void run() {
+      BufferedReader br = null;
+      try {
+        InputStreamReader isr = new InputStreamReader(is);
+        br = new BufferedReader(isr);
+        String line;
+        if (type != null) {
+          while ((line = br.readLine()) != null) {
+            os.println(type + ">" + line);
+          }
+        } else {
+          while ((line = br.readLine()) != null) {
+            os.println(line);
+          }
+        }
+        br.close();
+        br = null;
+      } catch (IOException ioe) {
+        ioe.printStackTrace();
+      } finally {
+        closeStream(br);
+      }
+    }
   }
 }

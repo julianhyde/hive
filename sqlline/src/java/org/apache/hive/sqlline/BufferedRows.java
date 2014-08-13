@@ -49,6 +49,11 @@ class BufferedRows extends Rows {
   }
 
   @Override
+  public String toString() {
+    return list.toString();
+  }
+
+  @Override
   void normalizeWidths() {
     int[] max = null;
     for (Row row : list) {
