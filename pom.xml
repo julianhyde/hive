@@ -46,6 +46,7 @@
     <module>serde</module>
     <module>service</module>
     <module>shims</module>
+    <module>sqlline</module>
     <module>testutils</module>
     <module>packaging</module>
   </modules>
@@ -124,6 +125,9 @@
     <jdo-api.version>3.0.1</jdo-api.version>
     <jetty.version>7.6.0.v20120127</jetty.version>
     <jersey.version>1.14</jersey.version>
+    <!-- version of jline used by sqlline -->
+    <jline.sqlline.version>2.10</jline.sqlline.version>
+    <!-- version of jline used by other code -->
     <jline.version>0.9.94</jline.version>
     <jms.version>1.1</jms.version>
     <jodd.version>3.5.2</jodd.version>
