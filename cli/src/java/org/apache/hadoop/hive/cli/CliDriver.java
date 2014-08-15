@@ -28,18 +28,21 @@ import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.sql.SQLException;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
-import jline.ArgumentCompletor;
-import jline.ArgumentCompletor.AbstractArgumentDelimiter;
-import jline.ArgumentCompletor.ArgumentDelimiter;
-import jline.Completor;
-import jline.ConsoleReader;
-import jline.History;
-import jline.SimpleCompletor;
+import jline.console.completer.ArgumentCompleter;
+import jline.console.completer.ArgumentCompleter.AbstractArgumentDelimiter;
+import jline.console.completer.ArgumentCompleter.ArgumentDelimiter;
+import jline.console.completer.Completer;
+import jline.console.ConsoleReader;
+import jline.console.history.FileHistory;
+import jline.console.completer.StringsCompleter;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
@@ -518,55 +521,57 @@ public class CliDriver {
     }
   }
 
-  public static Completor[] getCommandCompletor () {
-    // SimpleCompletor matches against a pre-defined wordlist
+  public static Completer[] getCommandCompletor () {
+    // SimpleCompleter matches against a pre-defined wordlist
     // We start with an empty wordlist and build it up
-    SimpleCompletor sc = new SimpleCompletor(new String[0]);
+    final SortedSet<String> words = new TreeSet<String>();
 
     // We add Hive function names
     // For functions that aren't infix operators, we add an open
     // parenthesis at the end.
     for (String s : FunctionRegistry.getFunctionNames()) {
       if (s.matches("[a-z_]+")) {
-        sc.addCandidateString(s + "(");
+        words.add(s + "(");
       } else {
-        sc.addCandidateString(s);
+        words.add(s);
       }
     }
 
     // We add Hive keywords, including lower-cased versions
     for (String s : HiveParser.getKeywords()) {
-      sc.addCandidateString(s);
-      sc.addCandidateString(s.toLowerCase());
+      words.add(s);
+      words.add(s.toLowerCase());
     }
+
+    SimpleCompleter sc = new SimpleCompleter(words, null);
 
     // Because we use parentheses in addition to whitespace
     // as a keyword delimiter, we need to define a new ArgumentDelimiter
     // that recognizes parenthesis as a delimiter.
     ArgumentDelimiter delim = new AbstractArgumentDelimiter () {
       @Override
-      public boolean isDelimiterChar (String buffer, int pos) {
+      public boolean isDelimiterChar (CharSequence buffer, int pos) {
         char c = buffer.charAt(pos);
         return (Character.isWhitespace(c) || c == '(' || c == ')' ||
           c == '[' || c == ']');
       }
     };
 
-    // The ArgumentCompletor allows us to match multiple tokens
+    // The ArgumentCompleter allows us to match multiple tokens
     // in the same line.
-    final ArgumentCompletor ac = new ArgumentCompletor(sc, delim);
-    // By default ArgumentCompletor is in "strict" mode meaning
+    final ArgumentCompleter ac = new ArgumentCompleter(delim, sc);
+    // By default ArgumentCompleter is in "strict" mode meaning
     // a token is only auto-completed if all prior tokens
     // match. We don't want that since there are valid tokens
     // that are not in our wordlist (eg. table and column names)
     ac.setStrict(false);
 
-    // ArgumentCompletor always adds a space after a matched token.
+    // ArgumentCompleter always adds a space after a matched token.
     // This is undesirable for function names because a space after
     // the opening parenthesis is unnecessary (and uncommon) in Hive.
-    // We stack a custom Completor on top of our ArgumentCompletor
+    // We stack a custom Completer on top of our ArgumentCompleter
     // to reverse this.
-    Completor completor = new Completor () {
+    Completer completer = new Completer () {
       @Override
       public int complete (String buffer, int offset, List completions) {
         List<String> comp = completions;
@@ -582,21 +587,26 @@ public class CliDriver {
       }
     };
 
-    HiveConf.ConfVars[] confs = HiveConf.ConfVars.values();
-    String[] vars = new String[confs.length];
-    for (int i = 0; i < vars.length; i++) {
-      vars[i] = confs[i].varname;
-    }
-    SimpleCompletor conf = new SimpleCompletor(vars);
-    conf.setDelimiter(".");
+    List<String> vars = new AbstractList<String>() {
+      final HiveConf.ConfVars[] confs = HiveConf.ConfVars.values();
 
-    SimpleCompletor set = new SimpleCompletor("set") {
+      @Override public String get(int index) {
+        return confs[index].varname;
+      }
+
+      @Override public int size() {
+        return confs.length;
+      }
+    };
+    SimpleCompleter conf = new SimpleCompleter(new TreeSet<String>(vars), ".");
+
+    StringsCompleter set = new StringsCompleter("set") {
       @Override
-      public int complete(String buffer, int cursor, List clist) {
+      public int complete(String buffer, int cursor, List<CharSequence> clist) {
         return buffer != null && buffer.equals("set") ? super.complete(buffer, cursor, clist) : -1;
       }
     };
-    ArgumentCompletor propCompletor = new ArgumentCompletor(new Completor[]{set, conf}) {
+    ArgumentCompleter propCompleter = new ArgumentCompleter(set, conf) {
       @Override
       @SuppressWarnings("unchecked")
       public int complete(String buffer, int offset, List completions) {
@@ -607,7 +617,7 @@ public class CliDriver {
         return ret;
       }
     };
-    return new Completor[] {propCompletor, completor};
+    return new Completer[] {propCompleter, completer};
   }
 
   public static void main(String[] args) throws Exception {
@@ -744,8 +754,8 @@ public class CliDriver {
     ConsoleReader reader =  getConsoleReader();
     reader.setBellEnabled(false);
     // reader.setDebug(new PrintWriter(new FileWriter("writer.debug", true)));
-    for (Completor completor : getCommandCompletor()) {
-      reader.addCompletor(completor);
+    for (Completer completer : getCommandCompletor()) {
+      reader.addCompleter(completer);
     }
 
     String line;
@@ -754,7 +764,7 @@ public class CliDriver {
     try {
       if ((new File(historyDirectory)).exists()) {
         String historyFile = historyDirectory + File.separator + HISTORYFILE;
-        reader.setHistory(new History(new File(historyFile)));
+        reader.setHistory(new FileHistory(new File(historyFile)));
       } else {
         System.err.println("WARNING: Directory for Hive history file: " + historyDirectory +
                            " does not exist.   History will not be available during this session.");

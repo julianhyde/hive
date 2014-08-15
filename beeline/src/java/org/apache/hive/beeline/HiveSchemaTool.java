@@ -48,8 +48,8 @@ import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.HiveMetaException;
 import org.apache.hadoop.hive.metastore.MetaStoreSchemaInfo;
 import org.apache.hadoop.hive.metastore.api.MetaException;
-import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hive.beeline.HiveSchemaHelper.NestedScriptParser;
+import org.apache.hive.sqlline.SqlLine;
 
 public class HiveSchemaTool {
   private String userName = null;
@@ -73,12 +73,7 @@ public class HiveSchemaTool {
     this.dbType = dbType;
     this.metaStoreSchemaInfo = new MetaStoreSchemaInfo(hiveHome, hiveConf, dbType);
     userName = hiveConf.get(ConfVars.METASTORE_CONNECTION_USER_NAME.varname);
-    try {
-      passWord = ShimLoader.getHadoopShims().getPassword(hiveConf,
-          HiveConf.ConfVars.METASTOREPWD.varname);
-    } catch (IOException err) {
-      throw new HiveMetaException("Error getting metastore password", err);
-    }
+    passWord = hiveConf.get(HiveConf.ConfVars.METASTOREPWD.varname);
   }
 
   public HiveConf getHiveConf() {
@@ -371,16 +366,20 @@ public class HiveSchemaTool {
     argList.add(sqlScriptFile);
 
     // run the script using Beeline
-    BeeLine beeLine = new BeeLine();
+    BeeLine beeLine = new BeeLine(false);
     if (!verbose) {
       beeLine.setOutputStream(new PrintStream(new NullOutputStream()));
       beeLine.getOpts().setSilent(true);
     }
-    beeLine.getOpts().setAllowMultiLineCommand(false);
+    //beeLine.getOpts().setAllowMultiLineCommand(false);
     beeLine.getOpts().setIsolation("TRANSACTION_READ_COMMITTED");
-    int status = beeLine.begin(argList.toArray(new String[0]), null);
-    if (status != 0) {
-      throw new IOException("Schema script failed, errorcode " + status);
+    SqlLine.Status status = beeLine.begin(argList, null);
+    switch (status) {
+    case OK:
+      break;
+    default:
+      throw new IOException("Schema script failed, error code " + status + " ("
+          + status.ordinal() + ")");
     }
   }
 
@@ -460,7 +459,6 @@ public class HiveSchemaTool {
     if (line.hasOption("dbType")) {
       dbType = line.getOptionValue("dbType");
       if ((!dbType.equalsIgnoreCase(HiveSchemaHelper.DB_DERBY) &&
-          !dbType.equalsIgnoreCase(HiveSchemaHelper.DB_MSSQL) &&
           !dbType.equalsIgnoreCase(HiveSchemaHelper.DB_MYSQL) &&
           !dbType.equalsIgnoreCase(HiveSchemaHelper.DB_POSTGRACE) && !dbType
           .equalsIgnoreCase(HiveSchemaHelper.DB_ORACLE))) {

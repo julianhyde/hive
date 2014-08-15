@@ -21,6 +21,7 @@ package org.apache.hive.beeline.util;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -32,6 +33,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hive.beeline.BeeLine;
+import org.apache.hive.sqlline.DispatchCallback;
 
 /**
  * QTestClient.
@@ -200,51 +202,58 @@ public class QFileClient {
     beelineOutputStream = new PrintStream(new File(outputDirectory, qFileName + ".beeline"));
     beeLine.setOutputStream(beelineOutputStream);
     beeLine.setErrorStream(beelineOutputStream);
-    beeLine.runCommands(new String[] {
-        "!set verbose true",
-        "!set shownestederrs true",
-        "!set showwarnings true",
-        "!set showelapsedtime false",
-        "!set maxwidth -1",
-        "!connect " + jdbcUrl + " " + username + " " + password + " " + jdbcDriver,
-    });
+    beeLine.runCommands(
+        Arrays.asList(
+            "!set verbose true",
+            "!set shownestederrs true",
+            "!set showwarnings true",
+            "!set showelapsedtime false",
+            "!set maxwidth -1",
+            "!connect " + jdbcUrl + " " + username + " " + password + " "
+                + jdbcDriver),
+        new DispatchCallback());
   }
 
   private void setUp() {
-    beeLine.runCommands(new String[] {
-        "USE default;",
-        "SHOW TABLES;",
-        "DROP DATABASE IF EXISTS `" + testname + "` CASCADE;",
-        "CREATE DATABASE `" + testname + "`;",
-        "USE `" + testname + "`;",
-        "set test.data.dir=" + testDataDirectory + ";",
-        "set test.script.dir=" + testScriptDirectory + ";",
-        "!run " + testScriptDirectory + "/q_test_init.sql",
-    });
+    beeLine.runCommands(
+        Arrays.asList(
+            "USE default;",
+            "SHOW TABLES;",
+            "DROP DATABASE IF EXISTS `" + testname + "` CASCADE;",
+            "CREATE DATABASE `" + testname + "`;",
+            "USE `" + testname + "`;",
+            "set test.data.dir=" + testDataDirectory + ";",
+            "set test.script.dir=" + testScriptDirectory + ";",
+            "!run " + testScriptDirectory + "/q_test_init.sql"),
+        new DispatchCallback());
   }
 
   private void tearDown() {
-    beeLine.runCommands(new String[] {
-        "!set outputformat table",
-        "USE default;",
-        "DROP DATABASE IF EXISTS `" + testname + "` CASCADE;",
-    });
+    beeLine.runCommands(
+        Arrays.asList(
+            "!set outputformat table",
+            "USE default;",
+            "DROP DATABASE IF EXISTS `" + testname + "` CASCADE;"),
+        new DispatchCallback());
   }
 
   private void runQFileTest() throws Exception {
     hasErrors = false;
-    beeLine.runCommands(new String[] {
-        "!set outputformat csv",
-        "!record " + outputDirectory + "/" + qFileName + ".raw",
-      });
+    beeLine.runCommands(
+        Arrays.asList(
+            "!set outputformat csv",
+            "!record " + outputDirectory + "/" + qFileName + ".raw"),
+        new DispatchCallback());
 
-    if (1 != beeLine.runCommands(new String[] { "!run " + qFileDirectory + "/" + qFileName })) {
+    if (1 != beeLine.runCommands(
+        Arrays.asList(
+            "!run " + qFileDirectory + "/" + qFileName),
+        new DispatchCallback())) {
       hasErrors = true;
     }
     
-    beeLine.runCommands(new String[] { "!record" });
+    beeLine.runCommands(Arrays.asList("!record"), new DispatchCallback());
   }
-
 
   private void filterResults() throws IOException {
     initFilterSet();
@@ -254,9 +263,8 @@ public class QFileClient {
 
   public void cleanup() {
     if (beeLine != null) {
-      beeLine.runCommands(new String[] {
-          "!quit"
-      });
+      beeLine.runCommands(Arrays.asList("!quit"),
+          new DispatchCallback());
     }
     if (beelineOutputStream != null) {
       beelineOutputStream.close();
