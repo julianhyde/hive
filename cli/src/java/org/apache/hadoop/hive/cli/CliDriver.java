@@ -28,10 +28,13 @@ import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.sql.SQLException;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import jline.console.completer.ArgumentCompleter;
 import jline.console.completer.ArgumentCompleter.AbstractArgumentDelimiter;
@@ -39,7 +42,6 @@ import jline.console.completer.ArgumentCompleter.ArgumentDelimiter;
 import jline.console.completer.Completer;
 import jline.console.ConsoleReader;
 import jline.console.history.FileHistory;
-import jline.console.history.History;
 import jline.console.completer.StringsCompleter;
 
 import org.apache.commons.lang.StringUtils;
@@ -520,9 +522,9 @@ public class CliDriver {
   }
 
   public static Completer[] getCommandCompletor () {
-    // SimpleCompletor matches against a pre-defined wordlist
+    // SimpleCompleter matches against a pre-defined wordlist
     // We start with an empty wordlist and build it up
-    final List<String> words = new ArrayList<String>();
+    final SortedSet<String> words = new TreeSet<String>();
 
     // We add Hive function names
     // For functions that aren't infix operators, we add an open
@@ -541,7 +543,7 @@ public class CliDriver {
       words.add(s.toLowerCase());
     }
 
-    StringsCompleter sc = new StringsCompleter(words);
+    SimpleCompleter sc = new SimpleCompleter(words, null);
 
     // Because we use parentheses in addition to whitespace
     // as a keyword delimiter, we need to define a new ArgumentDelimiter
@@ -558,16 +560,16 @@ public class CliDriver {
     // The ArgumentCompleter allows us to match multiple tokens
     // in the same line.
     final ArgumentCompleter ac = new ArgumentCompleter(delim, sc);
-    // By default ArgumentCompletor is in "strict" mode meaning
+    // By default ArgumentCompleter is in "strict" mode meaning
     // a token is only auto-completed if all prior tokens
     // match. We don't want that since there are valid tokens
     // that are not in our wordlist (eg. table and column names)
     ac.setStrict(false);
 
-    // ArgumentCompletor always adds a space after a matched token.
+    // ArgumentCompleter always adds a space after a matched token.
     // This is undesirable for function names because a space after
     // the opening parenthesis is unnecessary (and uncommon) in Hive.
-    // We stack a custom Completor on top of our ArgumentCompletor
+    // We stack a custom Completer on top of our ArgumentCompleter
     // to reverse this.
     Completer completer = new Completer () {
       @Override
@@ -585,21 +587,26 @@ public class CliDriver {
       }
     };
 
-    HiveConf.ConfVars[] confs = HiveConf.ConfVars.values();
-    String[] vars = new String[confs.length];
-    for (int i = 0; i < vars.length; i++) {
-      vars[i] = confs[i].varname;
-    }
-    StringsCompleter conf = new StringsCompleter(vars);
-    conf.setDelimiter(".");
+    List<String> vars = new AbstractList<String>() {
+      final HiveConf.ConfVars[] confs = HiveConf.ConfVars.values();
+
+      @Override public String get(int index) {
+        return confs[index].varname;
+      }
+
+      @Override public int size() {
+        return confs.length;
+      }
+    };
+    SimpleCompleter conf = new SimpleCompleter(new TreeSet<String>(vars), ".");
 
     StringsCompleter set = new StringsCompleter("set") {
       @Override
-      public int complete(String buffer, int cursor, List clist) {
+      public int complete(String buffer, int cursor, List<CharSequence> clist) {
         return buffer != null && buffer.equals("set") ? super.complete(buffer, cursor, clist) : -1;
       }
     };
-    ArgumentCompleter propCompletor = new ArgumentCompleter(set, conf) {
+    ArgumentCompleter propCompleter = new ArgumentCompleter(set, conf) {
       @Override
       @SuppressWarnings("unchecked")
       public int complete(String buffer, int offset, List completions) {
@@ -610,7 +617,7 @@ public class CliDriver {
         return ret;
       }
     };
-    return new Completer[] {propCompletor, completer};
+    return new Completer[] {propCompleter, completer};
   }
 
   public static void main(String[] args) throws Exception {
@@ -747,8 +754,8 @@ public class CliDriver {
     ConsoleReader reader =  getConsoleReader();
     reader.setBellEnabled(false);
     // reader.setDebug(new PrintWriter(new FileWriter("writer.debug", true)));
-    for (Completer completor : getCommandCompletor()) {
-      reader.addCompleter(completor);
+    for (Completer completer : getCommandCompletor()) {
+      reader.addCompleter(completer);
     }
 
     String line;
