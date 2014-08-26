@@ -125,7 +125,8 @@
     <jdo-api.version>3.0.1</jdo-api.version>
     <jetty.version>7.6.0.v20120127</jetty.version>
     <jersey.version>1.14</jersey.version>
-    <jline.version>2.10</jline.version>
+    <jline.version>0.9.94</jline.version>
+    <jline2.version>2.10</jline2.version>
     <jms.version>1.1</jms.version>
     <jodd.version>3.5.2</jodd.version>
     <json.version>20090211</json.version>
@@ -203,6 +204,17 @@
          <enabled>false</enabled>
        </snapshots>
      </repository>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <id>conjars</id>
+      <name>Conjars</name>
+      <url>http://conjars.org/repo</url>
+      <layout>default</layout>
+    </repository>
   </repositories>
 
   <!-- Hadoop dependency management is done at the bottom under profiles -->
@@ -324,6 +336,11 @@
         <groupId>javolution</groupId>
         <artifactId>javolution</artifactId>
         <version>${javolution.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>jline</groupId>
+        <artifactId>jline</artifactId>
+        <version>${jline.version}</version>
       </dependency>
       <dependency>
         <groupId>junit</groupId>

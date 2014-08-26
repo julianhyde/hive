@@ -49,6 +49,7 @@ import org.apache.hadoop.hive.metastore.HiveMetaException;
 import org.apache.hadoop.hive.metastore.MetaStoreSchemaInfo;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hive.beeline.HiveSchemaHelper.NestedScriptParser;
+import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hive.sqlline.SqlLine;
 
 public class HiveSchemaTool {
@@ -73,7 +74,12 @@ public class HiveSchemaTool {
     this.dbType = dbType;
     this.metaStoreSchemaInfo = new MetaStoreSchemaInfo(hiveHome, hiveConf, dbType);
     userName = hiveConf.get(ConfVars.METASTORE_CONNECTION_USER_NAME.varname);
-    passWord = hiveConf.get(HiveConf.ConfVars.METASTOREPWD.varname);
+    try {
+      passWord = ShimLoader.getHadoopShims().getPassword(hiveConf,
+          HiveConf.ConfVars.METASTOREPWD.varname);
+    } catch (IOException err) {
+      throw new HiveMetaException("Error getting metastore password", err);
+    }
   }
 
   public HiveConf getHiveConf() {
@@ -371,7 +377,7 @@ public class HiveSchemaTool {
       beeLine.setOutputStream(new PrintStream(new NullOutputStream()));
       beeLine.getOpts().setSilent(true);
     }
-    //beeLine.getOpts().setAllowMultiLineCommand(false);
+    beeLine.getOpts().setAllowMultiLineCommand(false);
     beeLine.getOpts().setIsolation("TRANSACTION_READ_COMMITTED");
     SqlLine.Status status = beeLine.begin(argList, null);
     switch (status) {

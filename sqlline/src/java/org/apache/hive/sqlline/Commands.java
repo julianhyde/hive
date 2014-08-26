@@ -953,15 +953,14 @@ public class Commands {
    */
   public void closeall(String line, DispatchCallback callback) {
     close(null, callback);
-    if (callback.isSuccess()) {
-      while (callback.isSuccess()) {
-        close(null, callback);
-      }
-      // the last "close" will set it to fail so reset it to success.
-      callback.setToSuccess();
+    if (!callback.isSuccess()) {
+      return;
     }
-    // probably a holdover of the old boolean returns.
-    callback.setToFailure();
+    while (callback.isSuccess()) {
+      close(null, callback);
+    }
+    // the last "close" will set it to fail so reset it to success.
+    callback.setToSuccess();
   }
 
   /**

@@ -42,8 +42,8 @@
     </dependency>
     <dependency>
       <groupId>jline</groupId>
-      <artifactId>jline</artifactId>
-      <version>${jline.version}</version>
+      <artifactId>jline2</artifactId>
+      <version>${jline2.version}</version>
     </dependency>
     <dependency>
       <groupId>net.sf.supercsv</groupId>
