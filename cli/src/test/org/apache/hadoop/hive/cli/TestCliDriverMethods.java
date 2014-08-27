@@ -42,9 +42,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import jline.console.ConsoleReader;
-import jline.console.completer.ArgumentCompleter;
-import jline.console.completer.Completer;
+import jline.ArgumentCompletor;
+import jline.Completor;
+import jline.ConsoleReader;
 import junit.framework.TestCase;
 
 import org.apache.commons.io.FileUtils;
@@ -143,20 +143,20 @@ public class TestCliDriverMethods extends TestCase {
 
 
   public void testGetCommandCompletor() {
-    Completer[] completors = CliDriver.getCommandCompletor();
+    Completor[] completors = CliDriver.getCommandCompletor();
     assertEquals(2, completors.length);
-    assertTrue(completors[0] instanceof ArgumentCompleter);
-    assertTrue(completors[1] instanceof Completer);
+    assertTrue(completors[0] instanceof ArgumentCompletor);
+    assertTrue(completors[1] instanceof Completor);
 
-    //completer add space after last delimiter
-   List<CharSequence>testList=new ArrayList<CharSequence>(Arrays.asList(new String[]{")"}));
+    //comletor add space after last delimeter
+   List<String>testList=new ArrayList<String>(Arrays.asList(new String[]{")"}));
     completors[1].complete("fdsdfsdf", 0, testList);
     assertEquals(") ", testList.get(0));
-    testList=new ArrayList<CharSequence>();
+    testList=new ArrayList<String>();
     completors[1].complete("len", 0, testList);
-    assertTrue(((String) testList.get(0)).endsWith("length("));
+    assertTrue(testList.get(0).endsWith("length("));
 
-    testList=new ArrayList<CharSequence>();
+    testList=new ArrayList<String>();
     completors[0].complete("set f", 0, testList);
     assertEquals("set", testList.get(0));
 

@@ -76,6 +76,11 @@
       <version>${commons-io.version}</version>
     </dependency>
     <dependency>
+      <groupId>jline</groupId>
+      <artifactId>jline</artifactId>
+      <version>${jline.version}</version>
+    </dependency>
+    <dependency>
       <groupId>org.apache.thrift</groupId>
       <artifactId>libthrift</artifactId>
       <version>${libthrift.version}</version>
