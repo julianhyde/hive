@@ -764,7 +764,7 @@ public class SqlLine implements Closeable {
     return KNOWN_DRIVERS;
   }
 
-  protected boolean initArgs(List<String> args) {
+  protected Status initArgs(List<String> args) {
     final CommandLine cl;
 
     try {
@@ -773,12 +773,13 @@ public class SqlLine implements Closeable {
       cl = parser.parse(getCommandLineOptions(), argArray);
     } catch (ParseException e1) {
       output(e1.getMessage());
-      return false;
+      usage();
+      return Status.ARGS;
     }
 
     if (cl.hasOption("help")) {
-      // Return false here, so usage will be printed.
-      return false;
+      usage();
+      return Status.OK;
     }
 
     String driver = cl.getOptionValue("d");
@@ -823,10 +824,14 @@ public class SqlLine implements Closeable {
       dispatch(COMMAND_PREFIX + "properties " + file, new DispatchCallback());
     }
 
-    if (commands.size() > 0) {
+    int errorCount = 0;
+    if (!commands.isEmpty()) {
       for (String command : commands) {
         debug(loc("executing-command", command));
-        dispatch(command, new DispatchCallback());
+        final DispatchCallback callback = new DispatchCallback();
+        if (callback.isFailure()) {
+          dispatch(command, callback);
+        }
       }
       exit = true; // execute and exit
     }
@@ -837,7 +842,7 @@ public class SqlLine implements Closeable {
           new DispatchCallback());
       dispatch(COMMAND_PREFIX + "quit", new DispatchCallback());
     }
-    return true;
+    return errorCount > 0 ? Status.OTHER : Status.OK;
   }
 
   /** Returns the options allowed for command-line arguments.
@@ -877,9 +882,9 @@ public class SqlLine implements Closeable {
 
     final DispatchCallback callback = new DispatchCallback();
     try {
-      if (!initArgs(args)) {
-        usage();
-        return Status.ARGS;
+      final Status status = initArgs(args);
+      if (status != Status.OK) {
+        return status;
       }
 
       // Basic setup done. From this point on, honor opts value for showing

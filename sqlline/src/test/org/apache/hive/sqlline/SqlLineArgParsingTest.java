@@ -22,11 +22,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import org.junit.Assert;
 import org.junit.Test;
 
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Unit test for how SqlLine parses command-line arguments.
@@ -37,8 +38,8 @@ public class SqlLineArgParsingTest {
     ArgCapturingSqlLine bl = new ArgCapturingSqlLine();
     List<String> args = Arrays.asList("-u", "url", "-n", "name",
         "-p", "password", "-d", "driver");
-    Assert.assertTrue(bl.initArgs(args));
-    Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
+    assertEquals(SqlLine.Status.OK, bl.initArgs(args));
+    assertTrue(bl.connectArgs.equals("url name password driver"));
   }
 
   /**
@@ -49,7 +50,7 @@ public class SqlLineArgParsingTest {
     ArgCapturingSqlLine bl = new ArgCapturingSqlLine();
     List<String> args = Arrays.asList("-u", "url", "-u", "url2", "-n", "name",
         "-p", "password", "-d", "driver");
-    Assert.assertTrue(bl.initArgs(args));
+    assertEquals(SqlLine.Status.OK, bl.initArgs(args));
     assertThat(bl.connectArgs, equalTo("url name password driver"));
   }
 
@@ -58,10 +59,10 @@ public class SqlLineArgParsingTest {
     ArgCapturingSqlLine bl = new ArgCapturingSqlLine();
     List<String> args = Arrays.asList("-u", "url", "-n", "name",
       "-p", "password", "-d", "driver", "-e", "select1", "-e", "select2");
-    Assert.assertTrue(bl.initArgs(args));
-    Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
-    Assert.assertTrue(bl.queries.contains("select1"));
-    Assert.assertTrue(bl.queries.contains("select2"));
+    assertEquals(SqlLine.Status.OK, bl.initArgs(args));
+    assertTrue(bl.connectArgs.equals("url name password driver"));
+    assertTrue(bl.queries.contains("select1"));
+    assertTrue(bl.queries.contains("select2"));
   }
 
   @Test
@@ -70,11 +71,11 @@ public class SqlLineArgParsingTest {
     List<String> args = Arrays.asList("-u", "url", "-n", "name",
         "-p", "password", "-d", "driver", "--autoCommit=true", "--verbose",
         "--truncateTable");
-    Assert.assertTrue(bl.initArgs(args));
-    Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
-    Assert.assertTrue(bl.getOpts().getAutoCommit());
-    Assert.assertTrue(bl.getOpts().getVerbose());
-    Assert.assertTrue(bl.getOpts().getTruncateTable());
+    assertEquals(SqlLine.Status.OK, bl.initArgs(args));
+    assertTrue(bl.connectArgs.equals("url name password driver"));
+    assertTrue(bl.getOpts().getAutoCommit());
+    assertTrue(bl.getOpts().getVerbose());
+    assertTrue(bl.getOpts().getTruncateTable());
   }
 
   /**
@@ -85,9 +86,9 @@ public class SqlLineArgParsingTest {
     ArgCapturingSqlLine bl = new ArgCapturingSqlLine();
     List<String> args = Arrays.asList("-u", "url", "-n", "name",
       "-p", "password", "-d", "driver", "-f", "myscript");
-    Assert.assertTrue(bl.initArgs(args));
-    Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
-    Assert.assertTrue(bl.getOpts().getScriptFile().equals("myscript"));
+    assertEquals(SqlLine.Status.OK, bl.initArgs(args));
+    assertTrue(bl.connectArgs.equals("url name password driver"));
+    assertTrue(bl.getOpts().getScriptFile().equals("myscript"));
   }
 
   /**
@@ -97,7 +98,7 @@ public class SqlLineArgParsingTest {
   public void testHelp() throws Exception {
     ArgCapturingSqlLine bl = new ArgCapturingSqlLine();
     List<String> args = Arrays.asList("--help");
-    Assert.assertFalse(bl.initArgs(args));
+    assertEquals(SqlLine.Status.OK, bl.initArgs(args));
   }
 
   /**
@@ -107,7 +108,7 @@ public class SqlLineArgParsingTest {
   public void testUnmatchedArgs() throws Exception {
     ArgCapturingSqlLine bl = new ArgCapturingSqlLine();
     List<String> args = Arrays.asList("-u", "url", "-n");
-    Assert.assertFalse(bl.initArgs(args));
+    assertEquals(SqlLine.Status.ARGS, bl.initArgs(args));
   }
 
   /** Sub-class of SqlLine that merely parses arguments. */
