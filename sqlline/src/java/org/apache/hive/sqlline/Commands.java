@@ -857,8 +857,8 @@ public class Commands {
       sqlLine.handleException(e);
     }
 
-    if (line.trim().endsWith(";")) {
-      line = line.trim();
+    line = line.trim();
+    if (line.endsWith(";")) {
       line = line.substring(0, line.length() - 1);
     }
 
