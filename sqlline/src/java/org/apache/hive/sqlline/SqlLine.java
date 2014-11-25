@@ -847,8 +847,9 @@ public class SqlLine implements Closeable {
       for (String command : commands) {
         debug(loc("executing-command", command));
         final DispatchCallback callback = new DispatchCallback();
+        dispatch(command, callback);
         if (callback.isFailure()) {
-          dispatch(command, callback);
+          ++errorCount;
         }
       }
       exit = true; // execute and exit
