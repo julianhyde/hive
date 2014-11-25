@@ -40,6 +40,7 @@ import java.util.List;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hive.jdbc.miniHS2.MiniHS2;
+import org.apache.hive.sqlline.DispatchCallback;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -136,8 +137,7 @@ public class TestBeeLineWithArgs {
     PrintStream beelineOutputStream = new PrintStream(os);
     beeLine.setOutputStream(beelineOutputStream);
     beeLine.setErrorStream(beelineOutputStream);
-    String[] args = argList.toArray(new String[argList.size()]);
-    beeLine.begin(args, inputStream);
+    beeLine.begin(argList, inputStream);
     String output = os.toString("UTF8");
 
     beeLine.close();
@@ -486,12 +486,12 @@ public class TestBeeLineWithArgs {
     beeLine.setOutputStream(beelineOutputStream);
     beeLine.setErrorStream(beelineOutputStream);
 
-    beeLine.runCommands( new String[] {"!typeinfo"} );
+    beeLine.runCommands(new DispatchCallback(), "!typeinfo");
     String output = os.toString("UTF8");
     Assert.assertFalse( output.contains("java.lang.NullPointerException") );
     Assert.assertTrue( output.contains("No current connection") );
 
-    beeLine.runCommands( new String[] {"!nativesql"} );
+    beeLine.runCommands(new DispatchCallback(), "!nativesql");
     output = os.toString("UTF8");
     Assert.assertFalse( output.contains("java.lang.NullPointerException") );
     Assert.assertTrue( output.contains("No current connection") );
