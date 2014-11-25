@@ -17,7 +17,7 @@
  */
 package org.apache.hive.sqlline;
 
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 
 import jline.console.completer.AggregateCompleter;
@@ -28,20 +28,26 @@ import jline.console.completer.StringsCompleter;
 
 /** Suggests completions for commands. */
 class SqlLineCommandCompleter extends AggregateCompleter {
-  public SqlLineCommandCompleter(SqlLine sqlLine) {
-    List<ArgumentCompleter> completers = new LinkedList<ArgumentCompleter>();
+  public SqlLineCommandCompleter(List<Completer> completers) {
+    super(completers);
+  }
 
+  public static SqlLineCommandCompleter create(SqlLine sqlLine) {
+    final List<Completer> completers = getCompleters(sqlLine);
+    return new SqlLineCommandCompleter(completers);
+  }
+
+  public static List<Completer> getCompleters(SqlLine sqlLine) {
+    final List<Completer> completers = new ArrayList<Completer>();
     for (CommandHandler commandHandler : sqlLine.commandHandlers) {
       for (String cmd : commandHandler.getNames()) {
-        final List<Completer> completers2 = new LinkedList<Completer>();
+        final List<Completer> completers2 = new ArrayList<Completer>();
         completers2.add(new StringsCompleter(SqlLine.COMMAND_PREFIX + cmd));
         completers2.addAll(commandHandler.getParameterCompleters());
         completers2.add(new NullCompleter()); // last param no complete
-
         completers.add(new ArgumentCompleter(completers2));
       }
     }
-
-    getCompleters().addAll(completers);
+    return completers;
   }
 }

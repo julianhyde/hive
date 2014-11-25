@@ -34,12 +34,16 @@ import java.util.Properties;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+import jline.Terminal;
 import jline.TerminalFactory;
 import jline.console.completer.Completer;
 import jline.console.completer.StringsCompleter;
 
 /** Configuration options for SqlLine. */
 public class SqlLineOpts implements Completer {
+  public static final int DEFAULT_MAX_WIDTH = 80;
+  public static final int DEFAULT_MAX_HEIGHT = 80;
+  public static final int DEFAULT_HEADER_INTERVAL = 100;
   public static final String PROPERTY_PREFIX = "sqlline.";
   public static final String PROPERTY_NAME_EXIT =
       PROPERTY_PREFIX + "system.exit";
@@ -53,7 +57,7 @@ public class SqlLineOpts implements Completer {
   private boolean silent = false;
   private boolean color = false;
   private boolean showHeader = true;
-  private int headerInterval = 100;
+  private int headerInterval = DEFAULT_HEADER_INTERVAL;
   private boolean fastConnect = true;
   private boolean autoCommit = true;
   private boolean verbose = false;
@@ -63,8 +67,8 @@ public class SqlLineOpts implements Completer {
   private boolean showWarnings = true;
   private boolean showNestedErrs = false;
   private String numberFormat = "default";
-  private int maxWidth = TerminalFactory.get().getWidth();
-  private int maxHeight = TerminalFactory.get().getHeight();
+  private int maxWidth;
+  private int maxHeight;
   private int maxColumnWidth = 15;
   int rowLimit = 0;
   int timeout = -1;
@@ -90,6 +94,15 @@ public class SqlLineOpts implements Completer {
     final File parent = saveDir(rcfilePropName);
     rcFile = new File(parent, propFileName);
     historyFile = new File(parent, "history").getAbsolutePath();
+    final Terminal terminal = TerminalFactory.get();
+    maxWidth = terminal.getWidth();
+    if (maxWidth <= 0) {
+      maxWidth = DEFAULT_MAX_WIDTH;
+    }
+    maxHeight = terminal.getHeight();
+    if (maxHeight <= 0) {
+      maxHeight = DEFAULT_MAX_HEIGHT;
+    }
   }
 
   public Completer[] optionCompleters() {

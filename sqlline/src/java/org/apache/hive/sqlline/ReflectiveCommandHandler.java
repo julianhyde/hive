@@ -24,9 +24,18 @@ import jline.console.completer.Completer;
  * uses reflection to determine the method to dispatch the command.
  */
 public class ReflectiveCommandHandler extends AbstractCommandHandler {
+  /**
+   * Creates a ReflectiveCommandHandler.
+   *
+   * @param sqlLine Shell instance
+   * @param cmds    Array of alternative names for the same command. The
+   *                first one is always chosen for display purposes and to
+   *                lookup help documentation from SqlLine.properties file.
+   * @param completers Completers
+   */
   public ReflectiveCommandHandler(SqlLine sqlLine, String[] cmds,
-      Completer[] completer) {
-    super(sqlLine, cmds, sqlLine.loc("help-" + cmds[0]), completer);
+      Completer[] completers) {
+    super(sqlLine, cmds, sqlLine.loc("help-" + cmds[0]), completers);
   }
 
   public void execute(String line, DispatchCallback callback) {

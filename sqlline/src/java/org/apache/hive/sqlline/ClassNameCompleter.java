@@ -120,13 +120,13 @@ public class ClassNameCompleter extends StringsCompleter {
 
     // now filter classes by changing "/" to "." and trimming the
     // trailing ".class"
-    Set classNames = new TreeSet();
+    Set<String> classNames = new TreeSet<String>();
 
     for (String name : classes) {
       classNames.add(name.replace('/', '.').substring(0, name.length() - 6));
     }
 
-    return (String[]) classNames.toArray(new String[classNames.size()]);
+    return classNames.toArray(new String[classNames.size()]);
   }
 
   private static Set<String> getClassFiles(

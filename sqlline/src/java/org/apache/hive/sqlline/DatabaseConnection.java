@@ -112,14 +112,13 @@ class DatabaseConnection {
 
     // setup the completer for the database
     sqlCompleter = new ArgumentCompleter(
-        new ArgumentCompleter.WhitespaceArgumentDelimiter() {
+        new ArgumentCompleter.AbstractArgumentDelimiter() {
             // delimiters for SQL statements are any
             // non-letter-or-number characters, except
             // underscore and characters that are specified
             // by the database to be valid name identifiers.
           @Override
-          public boolean isDelimiterChar(
-              final CharSequence buffer, int pos) {
+          public boolean isDelimiterChar(final CharSequence buffer, int pos) {
             char c = buffer.charAt(pos);
             if (Character.isWhitespace(c)) {
               return true;
@@ -130,7 +129,7 @@ class DatabaseConnection {
                 && (extraNameCharacters.indexOf(c) == -1);
           }
         },
-        new SqlCompleter(sqlLine, skipmeta));
+        SqlCompleter.create(sqlLine, skipmeta));
 
     // not all argument elements need to hold true
     ((ArgumentCompleter) sqlCompleter).setStrict(false);

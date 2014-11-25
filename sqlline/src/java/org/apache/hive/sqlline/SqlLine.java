@@ -599,7 +599,7 @@ public class SqlLine implements Closeable {
     this.defaultJdbcUrl = defaultJdbcUrl;
     this.opts = createOpts();
     this.commandHandlers = createCommandHandlers();
-    sqlLineCommandCompleter = new SqlLineCommandCompleter(this);
+    sqlLineCommandCompleter = SqlLineCommandCompleter.create(this);
     reflector = new Reflector(this);
 
     // attempt to dynamically load signal handler

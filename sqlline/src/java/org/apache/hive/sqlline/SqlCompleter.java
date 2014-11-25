@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
+import java.util.Collections;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -29,63 +30,69 @@ import jline.console.completer.StringsCompleter;
 
 /** Suggests completions for SQL statements. */
 class SqlCompleter extends StringsCompleter {
-  public SqlCompleter(SqlLine sqlLine, boolean skipMeta)
-      throws IOException, SQLException {
-    super(new String[0]);
+  public SqlCompleter(Set<String> completions) {
+    super(completions);
+  }
 
+  public static SqlCompleter create(SqlLine sqlLine, boolean skipMeta)
+      throws IOException, SQLException {
+    return new SqlCompleter(getCompletions(sqlLine, skipMeta));
+  }
+
+  public static Set<String> getCompletions(SqlLine sqlLine, boolean skipMeta)
+      throws IOException, SQLException {
     Set<String> completions = new TreeSet<String>();
 
     // add the default SQL completions
-    String keywords =
+    StringBuilder keywords = new StringBuilder();
+    keywords.append(
         new BufferedReader(
             new InputStreamReader(
                 SqlCompleter.class.getResourceAsStream(
-                    "sql-keywords.properties"))).readLine();
+                    "sql-keywords.properties"))).readLine());
 
     // now add the keywords from the current connection
     final DatabaseMetaData metaData = sqlLine.getDatabaseConnection().meta;
     try {
-      keywords += "," + metaData.getSQLKeywords();
+      keywords.append(",").append(metaData.getSQLKeywords());
     } catch (Throwable t) {
       // ignore
     }
     try {
-      keywords += "," + metaData.getStringFunctions();
+      keywords.append(",").append(metaData.getStringFunctions());
     } catch (Throwable t) {
       // ignore
     }
     try {
-      keywords += "," + metaData.getNumericFunctions();
+      keywords.append(",").append(metaData.getNumericFunctions());
     } catch (Throwable t) {
       // ignore
     }
     try {
-      keywords += "," + metaData.getSystemFunctions();
+      keywords.append(",").append(metaData.getSystemFunctions());
     } catch (Throwable t) {
       // ignore
     }
     try {
-      keywords += "," + metaData.getTimeDateFunctions();
+      keywords.append(",").append(metaData.getTimeDateFunctions());
     } catch (Throwable t) {
       // ignore
     }
 
     // also allow lower-case versions of all the keywords
-    keywords += "," + keywords.toLowerCase();
+    keywords.append(",").append(keywords.toString().toLowerCase());
 
-    for (String keyword : SqlLine.tokenize(keywords, ", ")) {
-      completions.add(keyword);
+    for (String keyword : SqlLine.tokenize(keywords.toString(), ", ")) {
+      if (keyword.length() > 0) {
+        completions.add(keyword);
+      }
     }
 
     // now add the tables and columns from the current connection
     if (!skipMeta) {
-      String[] columns = sqlLine.getColumnNames(metaData);
-      for (String column : columns) {
-        completions.add(column);
-      }
+      Collections.addAll(completions, sqlLine.getColumnNames(metaData));
     }
 
-    // set the Strings that will be completed
-    getStrings().addAll(completions);
+    return completions;
   }
 }

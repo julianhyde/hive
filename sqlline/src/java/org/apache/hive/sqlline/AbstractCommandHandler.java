@@ -91,6 +91,6 @@ public abstract class AbstractCommandHandler implements CommandHandler {
 
   @Override
   public List<Completer> getParameterCompleters() {
-    return this.parameterCompleters;
+    return parameterCompleters;
   }
 }

@@ -170,7 +170,7 @@
       License. However, in accepting such obligations, You may act only
       on Your own behalf and on Your sole responsibility, not on behalf
       of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability contains
+      defend, and hold each Contributor harmless for any liability
       incurred by, or claims asserted against, such Contributor by reason
       of your accepting any such warranty or additional liability.
 
@@ -432,7 +432,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-For the org.apache.hive.beeline.ClassNameCompleter class:
+For the org.apache.hive.sqlline.ClassNameCompleter class:
 
 Copyright (c) 2002-2006, Marc Prud'hommeaux <mwp1@cornell.edu>
 All rights reserved.
