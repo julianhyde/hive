@@ -55,28 +55,28 @@ class SqlCompleter extends StringsCompleter {
     final DatabaseMetaData metaData = sqlLine.getDatabaseConnection().meta;
     try {
       keywords.append(",").append(metaData.getSQLKeywords());
-    } catch (Throwable t) {
-      // ignore
+    } catch (Exception e) {
+      debug(sqlLine, e, "getSQLKeywords");
     }
     try {
       keywords.append(",").append(metaData.getStringFunctions());
-    } catch (Throwable t) {
-      // ignore
+    } catch (Exception e) {
+      debug(sqlLine, e, "getStringFunctions");
     }
     try {
       keywords.append(",").append(metaData.getNumericFunctions());
-    } catch (Throwable t) {
-      // ignore
+    } catch (Exception e) {
+      debug(sqlLine, e, "getNumericFunctions");
     }
     try {
       keywords.append(",").append(metaData.getSystemFunctions());
-    } catch (Throwable t) {
-      // ignore
+    } catch (Exception e) {
+      debug(sqlLine, e, "getSystemFunctions");
     }
     try {
       keywords.append(",").append(metaData.getTimeDateFunctions());
-    } catch (Throwable t) {
-      // ignore
+    } catch (Exception e) {
+      debug(sqlLine, e, "getDateFunctions");
     }
 
     // also allow lower-case versions of all the keywords
@@ -94,5 +94,11 @@ class SqlCompleter extends StringsCompleter {
     }
 
     return completions;
+  }
+
+  private static void debug(SqlLine sqlLine, Exception e, String method) {
+    sqlLine.error(
+        new RuntimeException("Method '" + method
+            + "' failed while populating SQL completions", e));
   }
 }
