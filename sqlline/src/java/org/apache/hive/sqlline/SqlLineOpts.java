@@ -438,6 +438,11 @@ public class SqlLineOpts implements Completer {
   }
 
   public void setOutputFormat(String outputFormat) {
+    if (outputFormat.equalsIgnoreCase("csv")
+        || outputFormat.equalsIgnoreCase("tsv")) {
+      sqlLine.info("Format " + outputFormat
+              + " is deprecated; please use " + outputFormat + "2");
+    }
     this.outputFormat = outputFormat;
   }
 

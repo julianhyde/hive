@@ -164,10 +164,12 @@ public class SqlLine implements Closeable {
   private final Map<String, OutputFormat> formats = map(
       "vertical", new VerticalOutputFormat(this),
       "table", new TableOutputFormat(this),
-      "csv", new SeparatedValuesOutputFormat(this, ','),
-      "tsv", new SeparatedValuesOutputFormat(this, '\t'),
+      "csv2", new SeparatedValuesOutputFormat(this, ','),
+      "tsv2", new SeparatedValuesOutputFormat(this, '\t'),
       "dsv", new SeparatedValuesOutputFormat(this,
           SqlLineOpts.DEFAULT_DELIMITER_FOR_DSV),
+      "csv", new DeprecatedSeparatedValuesOutputFormat(this, ','),
+      "tsv", new DeprecatedSeparatedValuesOutputFormat(this, '\t'),
       "xmlattr", new XmlAttributeOutputFormat(this),
       "xmlelements", new XmlElementOutputFormat(this));
 

@@ -17,29 +17,24 @@
  */
 package org.apache.hive.sqlline;
 
-import java.io.IOException;
-import java.io.StringWriter;
-
-import org.supercsv.io.CsvListWriter;
-import org.supercsv.prefs.CsvPreference;
-
 /**
  * OutputFormat for values separated by a delimiter.
+ *
+ * <p>Note that this does not handle escaping of the quote char.  The new
+ * {@link SeparatedValuesOutputFormat} supports that. The formats supported by
+ * this class are deprecated.
  */
-class SeparatedValuesOutputFormat implements OutputFormat {
-  private final SqlLine sqlLine;
-  private final StringWriter strWriter = new StringWriter();
-  private final CsvListWriter writer;
+class DeprecatedSeparatedValuesOutputFormat implements OutputFormat {
 
-  SeparatedValuesOutputFormat(SqlLine sqlLine, char separator) {
+  private final SqlLine sqlLine;
+  private char separator;
+
+  public DeprecatedSeparatedValuesOutputFormat(SqlLine sqlLine, char separator) {
     this.sqlLine = sqlLine;
-    // "" is passed as the end of line symbol in following function, as
-    // sqlLine itself adds newline
-    CsvPreference csvPreference =
-        new CsvPreference.Builder('"', separator, "").build();
-    this.writer = new CsvListWriter(strWriter, csvPreference);
+    setSeparator(separator);
   }
 
+  @Override
   public int print(Rows rows) {
     int count = 0;
     while (rows.hasNext()) {
@@ -50,23 +45,22 @@ class SeparatedValuesOutputFormat implements OutputFormat {
   }
 
   public void printRow(Rows rows, Rows.Row row) {
-    String formattedStr = getFormattedStr(row.values);
-    sqlLine.output(formattedStr);
+    String[] vals = row.values;
+    StringBuilder buf = new StringBuilder();
+    for (int i = 0; i < vals.length; i++) {
+      buf.append(buf.length() == 0 ? "" : "" + getSeparator())
+          .append('\'')
+          .append(vals[i] == null ? "" : vals[i])
+          .append('\'');
+    }
+    sqlLine.output(buf.toString());
   }
 
-  private String getFormattedStr(String[] vals) {
-    if (vals.length == 0) {
-      return "";
-    }
-    try {
-      writer.write(vals);
-      writer.flush();
-      final String s = strWriter.toString();
-      strWriter.getBuffer().setLength(0);
-      return s;
-    } catch (IOException e) {
-      sqlLine.error(e);
-      return "";
-    }
+  public void setSeparator(char separator) {
+    this.separator = separator;
+  }
+
+  public char getSeparator() {
+    return this.separator;
   }
 }
