@@ -465,9 +465,10 @@ public class HiveSchemaTool {
     if (line.hasOption("dbType")) {
       dbType = line.getOptionValue("dbType");
       if ((!dbType.equalsIgnoreCase(HiveSchemaHelper.DB_DERBY) &&
+          !dbType.equalsIgnoreCase(HiveSchemaHelper.DB_MSSQL) &&
           !dbType.equalsIgnoreCase(HiveSchemaHelper.DB_MYSQL) &&
-          !dbType.equalsIgnoreCase(HiveSchemaHelper.DB_POSTGRACE) && !dbType
-          .equalsIgnoreCase(HiveSchemaHelper.DB_ORACLE))) {
+          !dbType.equalsIgnoreCase(HiveSchemaHelper.DB_POSTGRACE) &&
+          !dbType.equalsIgnoreCase(HiveSchemaHelper.DB_ORACLE))) {
         System.err.println("Unsupported dbType " + dbType);
         printAndExit(cmdLineOptions);
       }
