@@ -824,10 +824,6 @@ public class SqlLine implements Closeable {
     }
 
     if (commands.size() > 0) {
-      // for single command execute, disable color
-      getOpts().setColor(false);
-      getOpts().setHeaderInterval(-1);
-
       for (String command : commands) {
         debug(loc("executing-command", command));
         dispatch(command, new DispatchCallback());
