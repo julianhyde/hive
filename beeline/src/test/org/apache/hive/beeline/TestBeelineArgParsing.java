@@ -19,10 +19,12 @@
 package org.apache.hive.beeline;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
-import junit.framework.Assert;
+import org.apache.hive.sqlline.DispatchCallback;
 
+import org.junit.Assert;
 import org.junit.Test;
 
 /**
@@ -37,7 +39,7 @@ public class TestBeelineArgParsing {
     List<String> queries = new ArrayList<String>();
 
     @Override
-    boolean dispatch(String command) {
+    protected void dispatch(String command, DispatchCallback callback) {
       String connectCommand = "!connect";
       String propertyCommand = "!property";
       if (command.startsWith(connectCommand)) {
@@ -47,16 +49,20 @@ public class TestBeelineArgParsing {
       } else {
         this.queries.add(command);
       }
-      return true;
+    }
+
+    @Override
+    public boolean initArgs(List<String> args) {
+      return super.initArgs(args);
     }
   }
 
   @Test
   public void testSimpleArgs() throws Exception {
     TestBeeline bl = new TestBeeline();
-    String args[] = new String[] {"-u", "url", "-n", "name",
-      "-p", "password", "-d", "driver", "-a", "authType"};
-    Assert.assertEquals(0, bl.initArgs(args));
+    List<String> args = Arrays.asList("-u", "url", "-n", "name",
+      "-p", "password", "-d", "driver", "-a", "authType");
+    Assert.assertTrue(bl.initArgs(args));
     Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
     Assert.assertTrue(bl.getOpts().getAuthType().equals("authType"));
   }
@@ -67,18 +73,18 @@ public class TestBeelineArgParsing {
   @Test
   public void testDuplicateArgs() throws Exception {
     TestBeeline bl = new TestBeeline();
-    String args[] = new String[] {"-u", "url", "-u", "url2", "-n", "name",
-      "-p", "password", "-d", "driver"};
-    Assert.assertEquals(0, bl.initArgs(args));
+    List<String> args = Arrays.asList("-u", "url", "-u", "url2", "-n", "name",
+      "-p", "password", "-d", "driver");
+    Assert.assertTrue(bl.initArgs(args));
     Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
   }
 
   @Test
   public void testQueryScripts() throws Exception {
     TestBeeline bl = new TestBeeline();
-    String args[] = new String[] {"-u", "url", "-n", "name",
-      "-p", "password", "-d", "driver", "-e", "select1", "-e", "select2"};
-    Assert.assertEquals(0, bl.initArgs(args));
+    List<String> args = Arrays.asList("-u", "url", "-n", "name",
+      "-p", "password", "-d", "driver", "-e", "select1", "-e", "select2");
+    Assert.assertTrue(bl.initArgs(args));
     Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
     Assert.assertTrue(bl.queries.contains("select1"));
     Assert.assertTrue(bl.queries.contains("select2"));
@@ -90,10 +96,11 @@ public class TestBeelineArgParsing {
   @Test
   public void testHiveConfAndVars() throws Exception {
     TestBeeline bl = new TestBeeline();
-    String args[] = new String[] {"-u", "url", "-n", "name",
+    List<String> args = Arrays.asList("-u", "url", "-n", "name",
       "-p", "password", "-d", "driver", "--hiveconf", "a=avalue", "--hiveconf", "b=bvalue",
-      "--hivevar", "c=cvalue", "--hivevar", "d=dvalue"};
-    Assert.assertEquals(0, bl.initArgs(args));
+      "--hivevar", "c=cvalue", "--hivevar", "d=dvalue");
+    Assert.assertTrue(bl.initArgs(args));
+
     Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
     Assert.assertTrue(bl.getOpts().getHiveConfVariables().get("a").equals("avalue"));
     Assert.assertTrue(bl.getOpts().getHiveConfVariables().get("b").equals("bvalue"));
@@ -104,14 +111,12 @@ public class TestBeelineArgParsing {
   @Test
   public void testBeelineOpts() throws Exception {
     TestBeeline bl = new TestBeeline();
-    String args[] =
-        new String[] { "-u", "url", "-n", "name", "-p", "password", "-d", "driver",
-            "--autoCommit=true", "--verbose", "--truncateTable" };
-    Assert.assertEquals(0, bl.initArgs(args));
+    List<String> args = Arrays.asList("-u", "url", "-n", "name",
+      "-p", "password", "-d", "driver", "--autoCommit=true", "--verbose");
+    Assert.assertTrue(bl.initArgs(args));
     Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
     Assert.assertTrue(bl.getOpts().getAutoCommit());
     Assert.assertTrue(bl.getOpts().getVerbose());
-    Assert.assertTrue(bl.getOpts().getTruncateTable());
   }
 
   /**
@@ -120,9 +125,9 @@ public class TestBeelineArgParsing {
   @Test
   public void testScriptFile() throws Exception {
     TestBeeline bl = new TestBeeline();
-    String args[] = new String[] {"-u", "url", "-n", "name",
-      "-p", "password", "-d", "driver", "-f", "myscript"};
-    Assert.assertEquals(0, bl.initArgs(args));
+    List<String> args = Arrays.asList("-u", "url", "-n", "name",
+      "-p", "password", "-d", "driver", "-f", "myscript");
+    Assert.assertTrue(bl.initArgs(args));
     Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
     Assert.assertTrue(bl.getOpts().getScriptFile().equals("myscript"));
   }
@@ -133,8 +138,8 @@ public class TestBeelineArgParsing {
   @Test
   public void testHelp() throws Exception {
     TestBeeline bl = new TestBeeline();
-    String args[] = new String[] {"--help"};
-    Assert.assertEquals(0, bl.initArgs(args));
+    List<String> args = Arrays.asList("--help");
+    Assert.assertFalse(bl.initArgs(args));
   }
 
   /**
@@ -143,8 +148,8 @@ public class TestBeelineArgParsing {
   @Test
   public void testUnmatchedArgs() throws Exception {
     TestBeeline bl = new TestBeeline();
-    String args[] = new String[] {"-u", "url", "-n"};
-    Assert.assertEquals(-1, bl.initArgs(args));
+    List<String> args = Arrays.asList("-u", "url", "-n");
+    Assert.assertFalse(bl.initArgs(args));
   }
 
 }

@@ -21,6 +21,7 @@ package org.apache.hive.beeline.util;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -32,6 +33,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hive.beeline.BeeLine;
+import org.apache.hive.sqlline.DispatchCallback;
 
 /**
  * QTestClient.
@@ -200,18 +202,17 @@ public class QFileClient {
     beelineOutputStream = new PrintStream(new File(outputDirectory, qFileName + ".beeline"));
     beeLine.setOutputStream(beelineOutputStream);
     beeLine.setErrorStream(beelineOutputStream);
-    beeLine.runCommands(new String[] {
+    beeLine.runCommands(new DispatchCallback(),
         "!set verbose true",
         "!set shownestederrs true",
         "!set showwarnings true",
         "!set showelapsedtime false",
         "!set maxwidth -1",
-        "!connect " + jdbcUrl + " " + username + " " + password + " " + jdbcDriver,
-    });
+        "!connect " + jdbcUrl + " " + username + " " + password + " " + jdbcDriver);
   }
 
   private void setUp() {
-    beeLine.runCommands(new String[] {
+    beeLine.runCommands(new DispatchCallback(),
         "USE default;",
         "SHOW TABLES;",
         "DROP DATABASE IF EXISTS `" + testname + "` CASCADE;",
@@ -219,32 +220,29 @@ public class QFileClient {
         "USE `" + testname + "`;",
         "set test.data.dir=" + testDataDirectory + ";",
         "set test.script.dir=" + testScriptDirectory + ";",
-        "!run " + testScriptDirectory + "/q_test_init.sql",
-    });
+        "!run " + testScriptDirectory + "/q_test_init.sql");
   }
 
   private void tearDown() {
-    beeLine.runCommands(new String[] {
+    beeLine.runCommands(new DispatchCallback(),
         "!set outputformat table",
         "USE default;",
-        "DROP DATABASE IF EXISTS `" + testname + "` CASCADE;",
-    });
+        "DROP DATABASE IF EXISTS `" + testname + "` CASCADE;");
   }
 
   private void runQFileTest() throws Exception {
     hasErrors = false;
-    beeLine.runCommands(new String[] {
+    beeLine.runCommands(new DispatchCallback(),
         "!set outputformat csv",
-        "!record " + outputDirectory + "/" + qFileName + ".raw",
-      });
+        "!record " + outputDirectory + "/" + qFileName + ".raw");
 
-    if (1 != beeLine.runCommands(new String[] { "!run " + qFileDirectory + "/" + qFileName })) {
+    if (1 != beeLine.runCommands(new DispatchCallback(),
+        "!run " + qFileDirectory + "/" + qFileName)) {
       hasErrors = true;
     }
     
-    beeLine.runCommands(new String[] { "!record" });
+    beeLine.runCommands(new DispatchCallback(), "!record");
   }
-
 
   private void filterResults() throws IOException {
     initFilterSet();
@@ -254,9 +252,7 @@ public class QFileClient {
 
   public void cleanup() {
     if (beeLine != null) {
-      beeLine.runCommands(new String[] {
-          "!quit"
-      });
+      beeLine.runCommands(new DispatchCallback(), "!quit");
     }
     if (beelineOutputStream != null) {
       beelineOutputStream.close();

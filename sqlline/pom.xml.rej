@@ -1,0 +1,17 @@
+***************
+*** 43,49 ****
+      <dependency>
+        <groupId>jline</groupId>
+        <artifactId>jline</artifactId>
+-       <version>${jline.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>net.sf.supercsv</groupId>
+--- 43,49 ----
+      <dependency>
+        <groupId>jline</groupId>
+        <artifactId>jline</artifactId>
++       <version>${jline.sqlline.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>net.sf.supercsv</groupId>
