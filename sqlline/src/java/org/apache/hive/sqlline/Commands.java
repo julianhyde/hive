@@ -32,6 +32,7 @@ import java.sql.Driver;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLWarning;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -190,6 +191,9 @@ public class Commands {
     "javax.jdo.option.ConnectionPassword",
     "ConnectionPassword",
   };
+
+  private static final int DEFAULT_QUERY_PROGRESS_INTERVAL = 1000;
+  private static final int DEFAULT_QUERY_PROGRESS_THREAD_TIMEOUT = 10 * 1000;
 
   private final SqlLine sqlLine;
 
@@ -885,6 +889,7 @@ public class Commands {
     try {
       Statement stmnt = null;
       boolean hasResults;
+      Thread logThread = null;
 
       try {
         long start = System.currentTimeMillis();
@@ -897,7 +902,15 @@ public class Commands {
         } else {
           stmnt = sqlLine.createStatement();
           callback.trackSqlQuery(stmnt);
-          hasResults = stmnt.execute(sql);
+          if (sqlLine.getOpts().isSilent()) {
+            hasResults = stmnt.execute(sql);
+          } else {
+            logThread = new Thread(createLogRunnable(stmnt));
+            logThread.setDaemon(true);
+            logThread.start();
+            hasResults = stmnt.execute(sql);
+            logThread.interrupt();
+          }
           callback.setToSuccess();
         }
 
@@ -914,6 +927,11 @@ public class Commands {
               reportResult(sqlLine.locChoice("rows-selected", count), start,
                   end);
             } finally {
+              if (logThread != null) {
+                logThread.join(DEFAULT_QUERY_PROGRESS_THREAD_TIMEOUT);
+                showRemainingLogsIfAny(stmnt);
+                logThread = null;
+              }
               rs.close();
             }
           } while (SqlLine.getMoreResults(stmnt));
@@ -923,6 +941,13 @@ public class Commands {
           reportResult(sqlLine.locChoice("rows-affected", count), start, end);
         }
       } finally {
+        if (logThread != null) {
+          if (!logThread.isInterrupted()) {
+            logThread.interrupt();
+          }
+          logThread.join(DEFAULT_QUERY_PROGRESS_THREAD_TIMEOUT);
+          showRemainingLogsIfAny(stmnt);
+        }
         if (stmnt != null) {
           sqlLine.showWarnings(stmnt.getWarnings());
           stmnt.close();
@@ -941,6 +966,47 @@ public class Commands {
     }
     sqlLine.showWarnings();
     callback.setToSuccess();
+  }
+
+  private Runnable createLogRunnable(final Statement statement) {
+    return new Runnable() {
+      @Override
+      public void run() {
+        try {
+          for (;;) {
+            // fetch the log periodically and output to sqlLine console
+            final List<String> logs = sqlLine.getLogs(statement);
+            if (logs == null) {
+              break;
+            }
+            for (String log : logs) {
+              sqlLine.info(log);
+            }
+            Thread.sleep(DEFAULT_QUERY_PROGRESS_INTERVAL);
+          }
+        } catch (SQLException e) {
+          sqlLine.error(new SQLWarning(e));
+        } catch (InterruptedException e) {
+          sqlLine.debug("Getting log thread is interrupted, since query is done!");
+        }
+      }
+    };
+  }
+
+  private void showRemainingLogsIfAny(Statement statement) {
+    try {
+      for (;;) {
+        final List<String> logs = sqlLine.getLogs(statement);
+        if (logs == null || logs.isEmpty()) {
+          return;
+        }
+        for (String log : logs) {
+          sqlLine.info(log);
+        }
+      }
+    } catch (SQLException e) {
+      sqlLine.error(new SQLWarning(e));
+    }
   }
 
   public void quit(String line, DispatchCallback callback) {

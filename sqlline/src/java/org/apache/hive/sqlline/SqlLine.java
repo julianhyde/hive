@@ -502,6 +502,24 @@ public class SqlLine implements Closeable {
     return getManifestAttribute("Implementation-Vendor");
   }
 
+  /**
+   * Returns the execution logs of the given SQL statement.
+   *
+   * <p>Returns null if there are, and will be, no more execution logs, or
+   * if this statement type does not produce logs.
+   *
+   * <p>Otherwise, returns a list of the log messages available at this time.
+   * If the list is empty, it means there are no log messages available,
+   * and the caller may call again.
+   *
+   * <p>The default implementation returns null.
+   *
+   * @param statement Statement
+   */
+  public List<String> getLogs(Statement statement) throws SQLException {
+    return null;
+  }
+
   /** Returns the resource bundle. */
   protected ResourceBundle res() {
     return RESOURCE_BUNDLE;
@@ -1192,7 +1210,7 @@ public class SqlLine implements Closeable {
     return false;
   }
 
-  void debug(String msg) {
+  protected void debug(String msg) {
     if (getOpts().getVerbose()) {
       output(getColorBuffer().blue(msg), true, getErrorStream());
     }
@@ -1402,7 +1420,7 @@ public class SqlLine implements Closeable {
     }
     final DatabaseMetaData metaData = getDatabaseConnection().meta;
     final String s = metaData.getConnection().getCatalog();
-    return metaData.getTables(s, null, "%", new String[] {"TABLE"});
+    return metaData.getTables(s, null, "%", new String[]{"TABLE"});
   }
 
   String[] getColumnNames(DatabaseMetaData meta) throws SQLException {

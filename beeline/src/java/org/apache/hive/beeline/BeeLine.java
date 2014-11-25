@@ -21,13 +21,17 @@ import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 
+import org.apache.hive.jdbc.HiveStatement;
 import org.apache.hive.sqlline.SqlLine;
 import org.apache.hive.sqlline.SqlLineOpts;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -257,6 +261,18 @@ public class BeeLine extends SqlLine {
       info.put(HIVE_CONF_PREFIX + var.getKey(), var.getValue());
     }
     return url;
+  }
+
+  @Override
+  public List<String> getLogs(Statement statement) throws SQLException {
+    if (statement instanceof HiveStatement) {
+      HiveStatement hiveStatement = (HiveStatement) statement;
+      return hiveStatement.getQueryLog();
+    } else {
+      debug("The statement instance is not HiveStatement type: "
+          + statement.getClass());
+      return null;
+    }
   }
 
   @Override
