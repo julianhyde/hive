@@ -84,7 +84,7 @@ AND (COUNT(s2.value) > 4)
 );
 
 explain
-SELECT distinct s1.customer_name as x, s1.customer_name as y
+SELECT distinct COUNT(*) AS c
 FROM default.testv1_staples s1 join default.src s2 on s1.customer_name = s2.key
 HAVING (
 (SUM(s1.customer_balance) <= 4074689.000000041)
