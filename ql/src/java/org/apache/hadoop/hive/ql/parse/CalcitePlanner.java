@@ -3231,6 +3231,18 @@ public class CalcitePlanner extends SemanticAnalyzer {
       return aInfo;
     }
 
+    private void expandSelectStar(QBParseInfo qbp, String dest, RowResolver inputRR, RelNode srcRel) {
+      final ASTNode selExprList = qbp.getSelForClause(dest);
+      if (selExprList.getToken().getType() == HiveParser.TOK_SELECTDI
+          && selExprList.getChildCount() == 1 && selExprList.getChild(0).getChildCount() == 1) {
+        ASTNode node = (ASTNode) selExprList.getChild(0).getChild(0);
+        if (node.getToken().getType() == HiveParser.TOK_ALLCOLREF) {
+          ASTNode newSelExprList = genSelectDIAST(inputRR);
+          qbp.setSelExprForClause(dest, newSelExprList);
+        }
+      }
+    }
+
     /**
      * Generate GB plan.
      *
@@ -3255,16 +3267,18 @@ public class CalcitePlanner extends SemanticAnalyzer {
       // SEL%SEL% rule.
       ASTNode selExprList = qb.getParseInfo().getSelForClause(detsClauseName);
       SubQueryUtils.checkForTopLevelSubqueries(selExprList);
-      if (selExprList.getToken().getType() == HiveParser.TOK_SELECTDI
-          && selExprList.getChildCount() == 1 && selExprList.getChild(0).getChildCount() == 1) {
-        ASTNode node = (ASTNode) selExprList.getChild(0).getChild(0);
-        if (node.getToken().getType() == HiveParser.TOK_ALLCOLREF) {
-          // As we said before, here we use genSelectLogicalPlan to rewrite AllColRef
-          srcRel = genSelectLogicalPlan(qb, srcRel, srcRel, null, null, true).getKey();
-          RowResolver rr = this.relToHiveRR.get(srcRel);
-          qbp.setSelExprForClause(detsClauseName, SemanticAnalyzer.genSelectDIAST(rr));
-        }
-      }
+      expandSelectStar(qbp, detsClauseName, relToHiveRR.get(srcRel), srcRel);
+
+//      if (selExprList.getToken().getType() == HiveParser.TOK_SELECTDI
+//          && selExprList.getChildCount() == 1 && selExprList.getChild(0).getChildCount() == 1) {
+//        ASTNode node = (ASTNode) selExprList.getChild(0).getChild(0);
+//        if (node.getToken().getType() == HiveParser.TOK_ALLCOLREF) {
+//          // As we said before, here we use genSelectLogicalPlan to rewrite AllColRef
+//          srcRel = genSelectLogicalPlan(qb, srcRel, srcRel, null, null, true).getKey();
+//          RowResolver rr = this.relToHiveRR.get(srcRel);
+//          qbp.setSelExprForClause(detsClauseName, SemanticAnalyzer.genSelectDIAST(rr));
+//        }
+//      }
 
       // Select DISTINCT + windowing; GBy handled by genSelectForWindowing
       if (selExprList.getToken().getType() == HiveParser.TOK_SELECTDI &&
@@ -3392,8 +3406,39 @@ public class CalcitePlanner extends SemanticAnalyzer {
         this.relToHiveRR.put(gbRel, groupByOutputRowResolver);
       }
 
-      return gbRel;
+    return gbRel;
+  }
+
+  private Pair<RelNode, RowResolver> genGBSelectDistinctPlan(
+    QBParseInfo qbp, String dest, Pair<RelNode, RowResolver> srcNodeRR) throws SemanticException {
+    final RelNode srcRel = srcNodeRR.left;
+
+    // This comes from genSelectLogicalPlan, must be a project
+    // assert srcRel instanceof HiveProject;
+
+    RowResolver inputRR = srcNodeRR.right;
+    if (inputRR == null) {
+      inputRR = relToHiveRR.get(srcRel);
     }
+    final RowResolver outputRR = inputRR;
+
+    final List<Integer> groupSetPositions = Lists.newArrayList();
+    final RelDataType inputRT = srcRel.getRowType();
+    int idx = 0;
+
+    while (idx < inputRT.getFieldCount()) {
+      groupSetPositions.add(idx);
+      ++idx;
+    }
+
+    HiveAggregate distAgg = new HiveAggregate(
+      cluster, cluster.traitSetOf(HiveRelNode.CONVENTION),
+      srcRel, false,
+      ImmutableBitSet.of(groupSetPositions),
+      null, new ArrayList<AggregateCall>());
+    relToHiveRR.put(distAgg, outputRR);
+    return new Pair<RelNode, RowResolver>(distAgg, outputRR);
+  }
 
     /**
      * Generate OB RelNode and input Select RelNode that should be used to
@@ -3943,6 +3988,23 @@ public class CalcitePlanner extends SemanticAnalyzer {
       }
     }
 
+
+    private Pair<RelNode,RowResolver> genSelectLogicalPlan(QB qb, RelNode srcRel, RelNode starSrcRel,
+                                         ImmutableMap<String, Integer> outerNameToPosMap, RowResolver outerRR, boolean isAllColRefRewrite)
+        throws SemanticException {
+      QBParseInfo qbp = getQBParseInfo(qb);
+      String selClauseName = qbp.getClauseNames().iterator().next();
+      ASTNode selExprList = qbp.getSelForClause(selClauseName);
+      
+      Pair<RelNode, RowResolver> retNodeRR = internalGenSelectLogicalPlan(
+        qb, srcRel, starSrcRel, outerNameToPosMap, outerRR, isAllColRefRewrite);
+
+      if (selExprList.getType() == HiveParser.TOK_SELECTDI) {
+        retNodeRR = genGBSelectDistinctPlan(qbp, selClauseName, retNodeRR);
+      }
+      return retNodeRR;
+    }
+
     /**
      * NOTE: there can only be one select caluse since we don't handle multi
      * destination insert.
@@ -3961,7 +4023,7 @@ public class CalcitePlanner extends SemanticAnalyzer {
      * @return RelNode: the select relnode RowResolver: i.e., originalRR, the RR after select when there is an order by.
      * @throws SemanticException
      */
-    private Pair<RelNode,RowResolver> genSelectLogicalPlan(QB qb, RelNode srcRel, RelNode starSrcRel,
+    private Pair<RelNode,RowResolver> internalGenSelectLogicalPlan(QB qb, RelNode srcRel, RelNode starSrcRel,
                                          ImmutableMap<String, Integer> outerNameToPosMap, RowResolver outerRR, boolean isAllColRefRewrite)
         throws SemanticException {
       // 0. Generate a Select Node for Windowing
