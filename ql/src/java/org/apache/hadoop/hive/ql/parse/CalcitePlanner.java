@@ -3433,7 +3433,7 @@ public class CalcitePlanner extends SemanticAnalyzer {
 
     HiveAggregate distAgg = new HiveAggregate(
       cluster, cluster.traitSetOf(HiveRelNode.CONVENTION),
-      srcRel, false,
+      srcRel,
       ImmutableBitSet.of(groupSetPositions),
       null, new ArrayList<AggregateCall>());
     relToHiveRR.put(distAgg, outputRR);
