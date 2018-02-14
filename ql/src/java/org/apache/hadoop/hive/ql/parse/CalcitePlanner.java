@@ -4298,7 +4298,13 @@ public class CalcitePlanner extends SemanticAnalyzer {
         // TODO: support unselected columns in genericUDTF and windowing functions.
         // We examine the order by in this query block and adds in column needed
         // by order by in select list.
-        if (obAST != null && !(selForWindow != null && selExprList.getToken().getType() == HiveParser.TOK_SELECTDI) && !isAllColRefRewrite) {
+        //
+        // If DISTINCT is present, it is not possible to ORDER BY unselected
+        // columns, and in fact adding all columns would change the behavior of
+        // DISTINCT, so we bypass this logic.
+        if (obAST != null
+            && selExprList.getToken().getType() != HiveParser.TOK_SELECTDI
+            && !isAllColRefRewrite) {
           // 1. OB Expr sanity test
           // in strict mode, in the presence of order by, limit must be
           // specified
