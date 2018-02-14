@@ -3437,6 +3437,8 @@ public class CalcitePlanner extends SemanticAnalyzer {
       ImmutableBitSet.of(groupSetPositions),
       null, new ArrayList<AggregateCall>());
     relToHiveRR.put(distAgg, outputRR);
+    relToHiveColNameCalcitePosMap.put(distAgg,
+        relToHiveColNameCalcitePosMap.get(srcRel));
     return new Pair<RelNode, RowResolver>(distAgg, outputRR);
   }
 
